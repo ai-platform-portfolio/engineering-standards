@@ -100,7 +100,29 @@ def differences(actual, expected, path="ruleset"):
     return [f"{path}: expected {expected!r}, found {actual!r}"]
 
 
-def inspect_repository(org, name, spec, contract, fetch=api):
+def capture_baseline(contract, fetch=api):
+    owner = fetch("user")["login"]
+    if owner != contract["code_owner"]:
+        raise ValueError("Capture requires the configured owner's authenticated account")
+    baseline = {"verified_by": owner, "rulesets": {}}
+    for name, spec in contract["repositories"].items():
+        prefix = f"repos/{contract['organization']}/{name}"
+        matches = [item for item in pages(f"{prefix}/rulesets", fetch) if item["name"] == "main"]
+        if len(matches) != 1:
+            raise ValueError(f"{name}: expected exactly one main ruleset before capture")
+        live = fetch(f"{prefix}/rulesets/{matches[0]['id']}")
+        findings = differences(live, ruleset(spec, contract["checks_app_id"]))
+        if findings:
+            raise ValueError(f"{name}: cannot capture an unverified configuration: {findings}")
+        if not live.get("updated_at"):
+            raise ValueError(f"{name}: ruleset update timestamp is missing")
+        baseline["rulesets"][name] = {
+            "ruleset_id": live["id"], "updated_at": live["updated_at"], "bypass_actors": [],
+        }
+    return baseline
+
+
+def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
     prefix = f"repos/{org}/{name}"
     info = fetch(prefix)
     findings = []
@@ -114,7 +136,18 @@ def inspect_repository(org, name, spec, contract, fetch=api):
         findings.append("expected exactly one main ruleset")
     else:
         live = fetch(f"{prefix}/rulesets/{matches[0]['id']}")
-        findings.extend(differences(live, ruleset(spec, contract["checks_app_id"])))
+        baseline = baseline or {}
+        captured = baseline.get("rulesets", {}).get(name)
+        expected_capture = {
+            "ruleset_id": live.get("id"), "updated_at": live.get("updated_at"), "bypass_actors": [],
+        }
+        if (baseline.get("verified_by") != contract["code_owner"] or not live.get("updated_at")
+                or captured != expected_capture):
+            findings.append("ruleset version lacks a matching owner-verified no-bypass baseline")
+        visible = dict(live)
+        if "bypass_actors" not in visible and captured == expected_capture:
+            visible["bypass_actors"] = captured["bypass_actors"]
+        findings.extend(differences(visible, ruleset(spec, contract["checks_app_id"])))
         effective = fetch(f"{prefix}/rules/branches/main")
         effective_types = {
             item["type"] for item in effective if item.get("ruleset_id") == matches[0]["id"]
@@ -156,7 +189,7 @@ def documentation_findings(text, expected):
     return []
 
 
-def audit(contract, readme, fetch=api):
+def audit(contract, readme, fetch=api, baseline=None):
     org = contract["organization"]
     discovered = {item["name"] for item in pages(f"orgs/{org}/repos?type=all", fetch)}
     expected = set(contract["repositories"])
@@ -166,7 +199,7 @@ def audit(contract, readme, fetch=api):
     rows = []
     for name, spec in contract["repositories"].items():
         try:
-            row = inspect_repository(org, name, spec, contract, fetch)
+            row = inspect_repository(org, name, spec, contract, fetch, baseline)
         except (RuntimeError, ValueError, KeyError, TypeError) as error:
             row = {"repository": name, "visibility": "unknown", "branch": "unknown",
                    "checks": spec["checks"], "findings": [str(error)]}
@@ -182,15 +215,24 @@ def main():
     parser.add_argument("--contract", type=Path, default=ROOT / "governance/repositories.json")
     parser.add_argument("--readme", type=Path, default=ROOT / "README.md")
     parser.add_argument("--report", type=Path, default=ROOT / "reports/governance.json")
+    parser.add_argument("--baseline", type=Path, default=ROOT / "governance/bypass-baseline.json")
     parser.add_argument("--ruleset", help="Print desired ruleset JSON for one repository; does not write to GitHub")
+    parser.add_argument("--capture-baseline", action="store_true", help="Read the full configuration as owner and print a proposed no-bypass baseline; never updates GitHub")
     args = parser.parse_args()
     contract = json.loads(args.contract.read_text())
     if args.ruleset:
         print(json.dumps(ruleset(contract["repositories"][args.ruleset], contract["checks_app_id"]), indent=2))
         return 0
+    if args.capture_baseline:
+        try:
+            print(json.dumps(capture_baseline(contract), indent=2))
+            return 0
+        except (RuntimeError, ValueError, KeyError, TypeError) as error:
+            print(str(error), file=sys.stderr)
+            return 2
     try:
-        report, block = audit(contract, args.readme.read_text())
-    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+        report, block = audit(contract, args.readme.read_text(), baseline=json.loads(args.baseline.read_text()))
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
         report, block = {"status": "error", "findings": [str(error)], "repositories": []}, ""
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")

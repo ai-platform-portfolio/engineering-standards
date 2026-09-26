@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from audit_governance import api, audit, documentation_findings, pages, render, ruleset
+from audit_governance import api, audit, capture_baseline, documentation_findings, pages, render, ruleset
 
 
 class GovernanceTest(unittest.TestCase):
@@ -17,7 +17,12 @@ class GovernanceTest(unittest.TestCase):
             "repositories": {"platform": {"checks": ["quality", "plan-required"]}},
         }
         self.live = ruleset(self.contract["repositories"]["platform"], 15368)
+        self.live.update(id=7, updated_at="2026-09-26T22:00:00.000Z")
+        self.baseline = {"verified_by": "owner", "rulesets": {"platform": {
+            "ruleset_id": 7, "updated_at": self.live["updated_at"], "bypass_actors": [],
+        }}}
         self.responses = {
+            "user": {"login": "owner"},
             "orgs/example/repos?type=all&per_page=100&page=1": [{"name": "platform"}],
             "repos/example/platform": {"visibility": "public", "default_branch": "main", "archived": False},
             "repos/example/platform/rulesets?per_page=100&page=1": [{"name": "main", "id": 7}],
@@ -33,10 +38,39 @@ class GovernanceTest(unittest.TestCase):
                                "checks": ["quality", "plan-required"], "findings": []}])
 
     def run_audit(self):
-        return audit(self.contract, self.readme, lambda path: copy.deepcopy(self.responses[path]))[0]
+        return audit(self.contract, self.readme, lambda path: copy.deepcopy(self.responses[path]), self.baseline)[0]
 
     def test_live_controls_match_documentation(self):
         self.assertEqual(self.run_audit()["status"], "pass")
+
+    def test_read_only_response_uses_only_the_exact_owner_verified_version(self):
+        del self.live["bypass_actors"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        self.live["updated_at"] = "2026-09-26T22:00:01.000Z"
+        self.assertEqual(self.run_audit()["status"], "fail")
+
+    def test_missing_untrusted_or_recreated_baseline_fails(self):
+        for change in (lambda b: b.update(verified_by="another-user"),
+                       lambda b: b.update(rulesets={}),
+                       lambda b: b["rulesets"]["platform"].update(ruleset_id=8)):
+            baseline = copy.deepcopy(self.baseline)
+            change(baseline)
+            report, _ = audit(self.contract, self.readme, self.responses.__getitem__, baseline)
+            self.assertEqual(report["status"], "fail")
+
+    def test_owner_can_capture_only_complete_correct_rulesets(self):
+        self.assertEqual(capture_baseline(self.contract, self.responses.__getitem__), self.baseline)
+        del self.live["bypass_actors"]
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+
+    def test_capture_rejects_bypass_actors_and_other_accounts(self):
+        self.live["bypass_actors"] = [{"actor_type": "OrganizationAdmin", "bypass_mode": "always"}]
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+        self.responses["user"] = {"login": "another-user"}
+        with self.assertRaisesRegex(ValueError, "configured owner"):
+            capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_disabled_untargeted_bypassed_or_weakened_rules_fail(self):
         changes = [

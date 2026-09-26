@@ -90,6 +90,17 @@ The reviewed expectations are in `governance/repositories.json`. A deliberate
 policy change must update that contract, the affected live rules and this table
 together. Other repositories link here instead of repeating mutable status claims.
 
+GitHub hides bypass actors from read-only tokens. After owner-approved rule
+activation, the owner runs `python3 scripts/audit_governance.py --capture-baseline`
+locally. This reads the full rulesets, rejects any bypass actor or policy mismatch,
+and prints the proposed `governance/bypass-baseline.json` for review and commit.
+CI compares the public ruleset ID and `updated_at` timestamp with that verified
+version. Every subsequent ruleset edit invalidates the baseline, even if it only
+changes hidden bypass actors. A missing or stale baseline fails the audit; it
+cannot be refreshed with CI's read-only token. No owner credential is stored in
+the workflow. The initial empty baseline must be populated after rule activation
+before this change can pass its governance check or be merged.
+
 The module repository's `infrastructure-plan-required` check fails if planning
 fails, is cancelled or is skipped. Fork PRs cannot satisfy it without a plan in
 a trusted same-repository branch. Deployment approval remains a separate gate.
