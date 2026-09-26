@@ -54,4 +54,5 @@ check:
 	.venv/bin/ruff format --check checks
 	.venv/bin/mypy checks
 	.venv/bin/python -m unittest discover -s tests -p test_review.py -v
+	.venv/bin/python -m unittest discover -s tests -p test_recheck_review.py -v
 	$(MAKE) test

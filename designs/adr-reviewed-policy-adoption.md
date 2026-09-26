@@ -25,8 +25,9 @@ Consumers opt in with `--github-pr NUMBER`, a read-only GitHub token and
    owner's outstanding change request blocks adoption.
 4. Load policy from the approved head and run the complete checker. Clear only
    `POLICY001`; keep all remaining findings and tool failures.
-5. Record owner, head and base in the JSON report. Run the check again on review
-   submission or dismissal. New commits require a fresh approval.
+5. Record owner, head and base in the JSON report. A separate review workflow
+   reruns the original PR structure job on approval, changes requested or dismissal.
+   New commits require a fresh approval.
 
 `engineering.yaml` and `.github/CODEOWNERS` are always protected. A policy
 exception cannot suppress `POLICY001`. Candidate CODEOWNERS cannot grant its
@@ -43,6 +44,20 @@ an unrelated unpinned module still fails `TF002`.
 The consumer pins the checker action to an immutable commit and checks out the
 actual PR head. Review-triggered checks need `pull-requests: read`. Fork PRs with
 insufficient token permissions fail closed and need a supported review context.
+
+The review workflow has `actions: write` solely to request a job rerun. It checks
+out only an immutable standards revision and executes `scripts/recheck_review.py`;
+it never executes PR code with that token. The helper selects the latest
+`quality.yml` pull-request run matching both PR number and current head, waits
+for an active run to finish, and reruns only `structure`. It also reruns a passing
+job after dismissal so withdrawn approval cannot leave that result green.
+API failure, missing or ambiguous jobs, and a five-minute wait timeout fail the
+review job visibly. A superseded or closed PR needs no refresh.
+
+Running structure directly on both PR and review events was rejected after live
+testing: GitHub retained the original failed check alongside the new passing
+check. Rerunning the original job updates that run's result. Review dispatch has
+a distinct job name and serializes events per PR without cancelling active runs.
 
 This checker is not an immutable security boundary: a PR can edit its workflow.
 Repository rules must independently require checks and owner reviews, dismiss
@@ -63,3 +78,5 @@ candidate-owner approval fails, and an unrelated bad module still fails. Stale,
 dismissed, rejected, self-authored and missing reviews cannot adopt policy.
 Dirty checkout, mismatched PR references and unavailable API also fail closed.
 These tests do not claim to validate GitHub's live event delivery or branch rules.
+The rerun helper tests cover failed and passing jobs, unrelated runs, in-flight
+validation, superseded heads, ambiguous jobs and timeout. No test invokes apply.
