@@ -58,6 +58,12 @@ def merge_block(existing, name, content):
 
 def targets(home, profile):
     codex = home / ".codex" / "AGENTS.md"
+    if profile == "portfolio":
+        content = (ROOT / "profiles" / "portfolio.md").read_text()
+        return [
+            (codex, "portfolio", content),
+            (home / ".claude" / "CLAUDE.md", "portfolio", content),
+        ]
     if profile == "shared":
         return [
             (codex, "shared", SHARED),
@@ -119,7 +125,7 @@ def write_with_backup(path, current, wanted):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("plan", "apply", "verify"))
-    parser.add_argument("profile", choices=("shared", "signal"))
+    parser.add_argument("profile", choices=("shared", "signal", "portfolio"))
     parser.add_argument("--home", type=Path, default=Path(os.environ.get("AGENT_SETUP_HOME", Path.home())))
     args = parser.parse_args()
     changes = []

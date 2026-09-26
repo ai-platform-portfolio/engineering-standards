@@ -10,6 +10,7 @@ help:
 	@echo 'make signal-plan    Show optional Signal changes'
 	@echo 'make signal-install Review and install optional Signal'
 	@echo 'make signal-verify  Check optional Signal for drift'
+	@echo 'make portfolio-plan / portfolio-install / portfolio-verify  Optional personal architecture guidance'
 	@echo 'make test           Run reconciliation tests'
 
 plan:
@@ -29,6 +30,16 @@ signal-install:
 
 signal-verify:
 	@$(RECONCILE) verify signal
+
+.PHONY: portfolio-plan portfolio-install portfolio-verify
+portfolio-plan:
+	@$(RECONCILE) plan portfolio
+
+portfolio-install:
+	@$(RECONCILE) apply portfolio
+
+portfolio-verify:
+	@$(RECONCILE) verify portfolio
 
 test:
 	@$(PYTHON) -m unittest discover -s tests -v

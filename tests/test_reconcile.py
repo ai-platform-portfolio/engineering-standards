@@ -82,6 +82,20 @@ class ReconcileTest(unittest.TestCase):
             self.assertEqual(style.read_text(), (ROOT / "profiles/signal.md").read_text())
             self.assertEqual(next(style.parent.glob("signal.md.backup.*")).read_text(), "my style\n")
 
+    def test_portfolio_is_opt_in_and_survives_shared_reconciliation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            targets = [home / ".codex/AGENTS.md", home / ".claude/CLAUDE.md"]
+            self.assertEqual(run(home, "apply", "shared", "y\n").returncode, 0)
+            for target in targets:
+                self.assertNotIn("agent-setup:portfolio", target.read_text())
+            self.assertEqual(run(home, "apply", "portfolio", "y\n").returncode, 0)
+            self.assertEqual(run(home, "apply", "shared").returncode, 0)
+            for target in targets:
+                self.assertEqual(target.read_text().count("agent-setup:portfolio:start"), 1)
+                self.assertIn("agent-setup:shared:start", target.read_text())
+            self.assertEqual(run(home, "verify", "portfolio").returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

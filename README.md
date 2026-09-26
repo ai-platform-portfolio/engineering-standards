@@ -90,6 +90,22 @@ If you decline the prompt, no file changes. Rerun `make plan` or `make signal-pl
 
 ## Project guidance
 
+### Optional personal portfolio preference
+
+`profiles/portfolio.md` contains Michaela's preference for production-style
+platform design during local portfolio development. Opt in with
+`make portfolio-plan` followed by `make portfolio-install`; check drift with
+`make portfolio-verify`. It uses a separate managed block in the local Claude
+and Codex guidance files and preserves existing instructions.
+
+Default installation excludes this profile. It is not a downstream requirement
+or CI policy: do not copy it into project instructions or distribute it with
+modules. Installing it in global agent guidance makes it visible to local
+sessions, but its instructions apply only to portfolio work. Shared approval
+boundaries continue to apply.
+
+### Repository instructions
+
 Put project-specific conventions in the project's `AGENTS.md`. Codex reads it automatically. Claude Code 2.1.277+ can read it directly when no project `CLAUDE.md` takes precedence. On older versions, put `@AGENTS.md` in a small `CLAUDE.md` beside it. Keep personal preferences out of the shared project file.
 
 Run `make test` to exercise fresh, existing, conflicting, and repeat installation cases in temporary home directories. Review changes to `standards/shared.md` and `profiles/signal.md` like code before rolling them out; do not commit credentials or local auth files.
