@@ -32,3 +32,14 @@ signal-verify:
 
 test:
 	@$(PYTHON) -m unittest discover -s tests -v
+
+.PHONY: tools check
+tools:
+	uv sync --frozen --python 3.12
+	npm ci --ignore-scripts
+
+check:
+	.venv/bin/ruff check checks
+	.venv/bin/ruff format --check checks
+	.venv/bin/mypy checks
+	$(MAKE) test

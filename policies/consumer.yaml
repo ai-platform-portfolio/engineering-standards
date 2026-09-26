@@ -1,0 +1,29 @@
+version: 1
+terraform:
+  roots: [terraform]
+  profile: consumer
+  approved_repositories: [ai-platform-portfolio/terraform-modules]
+python:
+  roots: [python]
+  boundaries:
+    - from: python/domain/*
+      deny: [python/adapters*, boto3*, azure*, google.cloud*]
+      message: Domain code must not import infrastructure adapters or cloud SDKs.
+typescript:
+  roots: [typescript/src]
+  boundaries:
+    - from: typescript/src/ui/*
+      deny: [typescript/src/features/*, typescript/src/api/*]
+      message: Shared UI must not depend on feature logic or APIs.
+    - from: typescript/src/pages/*
+      deny: [typescript/src/api/*, axios, '@tanstack/react-query']
+      message: Pages consume public feature components and hooks, not transport APIs.
+comments:
+  max_lines: 5
+  max_characters: 400
+duplication:
+  min_tokens: 50
+  min_lines: 5
+protected_paths: [engineering.yaml, '.github/*']
+exclude: []
+exceptions: []

@@ -1,6 +1,61 @@
-# Agent setup
+# Engineering standards
 
 Shared working standards for coding agents, with an optional `Signal` response style. The repo holds the canonical Markdown; local Claude and Codex files are adapters.
+
+Formerly `agent-setup`. Existing Make targets and `agent-setup:*` managed markers
+remain stable so installed configurations continue to reconcile without duplication.
+
+## Executable quality policies
+
+The setup instructions below need Python 3.9+. Quality checks need Python 3.12,
+Node 22 and uv. Run `make tools` to install the locked toolchain locally.
+
+Copy `policies/consumer.yaml` to a consumer's `engineering.yaml` and review its
+source roots and dependency boundaries. Then run:
+
+```sh
+engineering-standards/.venv/bin/engineering-checks \
+  --root implementation-repo --base origin/main \
+  --report implementation-repo/reports/quality.json
+```
+
+The policy is read from the base revision, not the working tree. Use `--policy`
+only to supply a separately trusted policy during initial adoption. Exit codes:
+0 passes, 1 means policy findings, 2 means the check could not complete.
+
+Checks parse HCL, Python and TypeScript; enforce configured import boundaries;
+limit changed comment blocks; and compare changed Python/TypeScript code with
+all declared source files using jscpd. Ruff, mypy, Biome and TypeScript run with
+tool-owned settings. Consumer lint configuration cannot silently weaken them.
+The TypeScript profile currently supports relative imports; alias mappings and
+framework-specific type configuration need a reviewed profile extension.
+
+`engineering-acceptance` holds the end-to-end cases. They cover good changes,
+bad changes and tool failure. Semantic equivalence is not a guaranteed detection
+capability: independently written implementations may evade clone detection.
+Import rules constrain direct dependencies, not every possible runtime access.
+
+Exceptions require an exact rule/file plus reason and owner in the trusted
+policy. Use symbol-specific exceptions for Terraform. Generated-file exclusions
+must also be declared there; inline suppression comments do not grant exceptions.
+Policy changes require a separate owner-approved adoption; a normal feature PR
+cannot change `engineering.yaml` or workflows to make itself pass.
+
+### CI and enforcement status
+
+Consumers pin this repository's composite action to a full commit SHA. It installs
+the tools; the consumer invokes the emitted checker against the PR base and uploads
+the JSON report. See the acceptance repository for a working pinned consumer.
+Installation executes no consumer package scripts and needs no deployment secrets.
+
+The organisation currently uses GitHub Free with private repositories. GitHub's
+branch-protection API returned HTTP 403: upgrade or public visibility is required.
+CI reports failures, but **merging is not protected**. CODEOWNERS identifies the
+reviewer but does not enforce approval without the corresponding repository rule.
+After that capability is available, require quality checks on the current revision,
+owner review for policy/workflow changes, stale-approval dismissal and no agent bypass.
+
+Agent repair loops, model-based reviews and deployment automation are deferred.
 
 ## Start here
 
