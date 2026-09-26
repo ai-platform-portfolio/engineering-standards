@@ -6,6 +6,13 @@
 - Whenever asking the user to run a terminal command, include the exact command in a copyable code block and explain any placeholders. Commands reserved for the user must still be run by the user.
 - Keep environment-specific Azure identifiers, storage-account names and Key Vault names in organization GitHub Secrets or a cloud secret store, not Actions Variables or tracked configuration/documentation. Grant consuming repositories access explicitly; preserve established secret names (`TF_BACKEND_RESOURCE_NAME` means the Terraform storage account). Load values at runtime and redact reports/logs. Keep state, saved plans and local bootstrap inputs access-restricted and out of Git. Removing current references does not remove published history; obtain approval before rewriting history.
 
+## Pre-merge deployment validation
+
+- Feature-branch PRs must exercise the real infrastructure plan path before merge: backend initialization, provider authentication, refresh and planning. Static validation alone is insufficient. Main re-plans for drift and gates apply; it must not be the first execution test of the planning path.
+- Validate workflow YAML and embedded shell on every PR, with Actionlint and ShellCheck enabled. Missing tools or skipped shell analysis must fail the check. Keep a deliberately broken workflow as an acceptance test that proves the gate catches shell syntax errors.
+- Require workflow validation and a successful plan for the current PR revision in active repository rules. A missing, skipped or failed required validation must not be presented as merge-ready. Verify the rules are active before claiming enforcement.
+- Publish a commit-labelled, collapsible PR plan result, updating the existing bot comment. Redact secrets and environment identifiers before publishing; never upload raw state or saved plans. A PR plan is a preview, not permission to apply.
+
 ## Decisions reserved for the user
 
 - A request to review, assess, or discuss authorizes investigation and an answer, not implementation. Wait for an instruction to make changes.

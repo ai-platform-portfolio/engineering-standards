@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from checks import dependencies, duplication, terraform, tooling
+from checks import dependencies, duplication, review, terraform, tooling
 from checks.source import Finding, changed_lines, comments, git, parse, source_files
 
 
@@ -83,13 +83,15 @@ def evaluate(root: Path, base: str, policy: dict[str, Any], tools: Path) -> list
     findings.extend(duplication.check(root, language_paths, changes, tools, policy["duplication"]))
     findings.extend(tooling.check(root, policy, tools))
     for path in git(root, "diff", "--name-only", base, "--").splitlines():
-        if any(fnmatchcase(path, pattern) for pattern in policy.get("protected_paths", [])):
+        if path in {"engineering.yaml", ".github/CODEOWNERS"} or any(
+            fnmatchcase(path, pattern) for pattern in policy.get("protected_paths", [])
+        ):
             findings.append(
                 Finding(
                     "POLICY001",
                     path,
                     1,
-                    "Policy changes require a separate owner-approved standards update; candidate policy cannot authorise itself.",
+                    "Protected changes require owner approval of this commit and --github-pr adoption.",
                 )
             )
     exceptions = policy.get("exceptions", [])
@@ -97,7 +99,8 @@ def evaluate(root: Path, base: str, policy: dict[str, Any], tools: Path) -> list
         finding
         for finding in findings
         if not any(
-            finding.rule == exception["rule"]
+            finding.rule != "POLICY001"
+            and finding.rule == exception["rule"]
             and finding.file == exception["file"]
             and (not exception.get("symbol") or finding.symbol == exception["symbol"])
             for exception in exceptions
@@ -118,6 +121,9 @@ def main() -> int:
         "--tools", type=Path, default=Path(__file__).resolve().parent.parent / "node_modules/.bin"
     )
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument(
+        "--github-pr", type=int, help="Allow policy adoption after exact-head owner review"
+    )
     args = parser.parse_args()
     try:
         root = args.root.resolve()
@@ -128,10 +134,27 @@ def main() -> int:
             else git(root, "show", f"{args.base}:engineering.yaml")
         )
         policy = load_policy(text)
+        adoption = None
+        changed = git(root, "diff", "--name-only", args.base, "--").splitlines()
+        protected = [
+            path
+            for path in changed
+            if path in {"engineering.yaml", ".github/CODEOWNERS"}
+            or any(fnmatchcase(path, pattern) for pattern in policy.get("protected_paths", []))
+        ]
+        if args.github_pr and protected:
+            if args.policy:
+                raise ValueError("--github-pr cannot be combined with an external --policy")
+            adoption = review.github_approval(root, args.base, args.github_pr)
+            if adoption:
+                policy = load_policy(git(root, "show", "HEAD:engineering.yaml"))
         findings = evaluate(root, args.base, policy, args.tools.resolve())
+        if adoption:
+            findings = [finding for finding in findings if finding.rule != "POLICY001"]
         report: dict[str, Any] = {
             "status": "fail" if findings else "pass",
             "findings": [finding.json() for finding in findings],
+            "policy_adoption": adoption,
         }
         code = 1 if findings else 0
     except Exception as error:

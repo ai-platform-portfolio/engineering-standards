@@ -42,7 +42,7 @@ portfolio-verify:
 	@$(RECONCILE) verify portfolio
 
 test:
-	@$(PYTHON) -m unittest discover -s tests -v
+	@$(PYTHON) -m unittest discover -s tests -p test_reconcile.py -v
 
 .PHONY: tools check
 tools:
@@ -53,4 +53,6 @@ check:
 	.venv/bin/ruff check checks
 	.venv/bin/ruff format --check checks
 	.venv/bin/mypy checks
+	.venv/bin/python -m unittest discover -s tests -p test_review.py -v
+	.venv/bin/python -m unittest discover -s tests -p test_recheck_review.py -v
 	$(MAKE) test
