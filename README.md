@@ -1,20 +1,38 @@
 # Agent setup
 
-Shared personal instructions for coding agents. `profiles/signal.md` is the source of truth for response style. Its Markdown body is tool neutral; the YAML frontmatter supplies the metadata Claude Code needs for a named output style.
+Shared working standards for coding agents, with an optional `Signal` response style. The repo holds the canonical Markdown; local Claude and Codex files are adapters.
 
-## Install locally
+## Start here
 
-Run `./scripts/install.sh --backup-existing` from this checkout. The script links the same file at:
+Requires Python 3.9+ and Make. Clone this repository, then run:
 
-- `~/.claude/output-styles/signal.md` for Claude Code's `Signal` output style
-- `~/.codex/AGENTS.md` for Codex's global instructions
+```sh
+make plan
+make install
+make verify
+```
 
-The script backs up an existing file only when `--backup-existing` is given. Without it, an existing file causes the script to stop before changing either target. Run it again after moving the checkout. Start a new Codex session and restart Claude Code after installation so each loads the file.
+`make plan` prints each proposed file change and edits nothing. `make install` shows the same diff and asks once before applying the complete set. It preserves existing text, adds or updates only the `agent-setup:shared` section, and backs up existing files before writing. `make verify` reports missing or changed sections without editing. Repeat `make install` when the shared standard changes.
 
-Claude Code selects the style through `/output-style Signal` or `outputStyle: "Signal"` in its settings. The installer does not change Claude's active style. Codex loads its global `AGENTS.md` automatically.
+The shared standard is in `standards/shared.md`. Its adapters are `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md`. This works with the older Claude Code versions that do not read `AGENTS.md` directly. Existing symlinks, non-regular files, and damaged section markers require manual review; the script changes neither target until those issues are resolved. A developer should also review their existing instructions for a semantic conflict, since the script can preserve text but cannot judge whether two rules agree.
 
-## Project instructions
+## Optional Signal style
 
-Put shared project conventions in a repository's `AGENTS.md`. Codex reads it automatically. Claude Code 2.1.277+ can read it directly when no project `CLAUDE.md` takes precedence. On older versions, put `@AGENTS.md` in a small `CLAUDE.md` beside it.
+`profiles/signal.md` is the single source for Signal. To opt in:
 
-Keep provider-specific settings and tool names out of shared instructions unless they are clearly marked as adapters. Do not commit credentials or local auth files to this repository.
+```sh
+make signal-plan
+make signal-install
+```
+
+For Codex, this adds or updates a separate `agent-setup:signal` section in the global `AGENTS.md`. For Claude Code, it installs a named output style at `~/.claude/output-styles/signal.md`. Claude does not activate it automatically; select it with `/output-style Signal` or set `outputStyle: "Signal"` in `~/.claude/settings.json`. If that style file already exists, installation displays the full diff and asks before replacing it. It backs up the old file.
+
+Run `make signal-verify` to check an opted-in installation for drift.
+
+If you decline the prompt, no file changes. Rerun `make plan` or `make signal-plan` after resolving a conflict. Backups are stored beside the changed files with a `.backup.<timestamp>.<pid>` suffix; copy one back to restore it. An operating-system write failure can still leave one target updated; use its backup to restore it. No command edits Claude or Codex settings JSON/TOML or auth files.
+
+## Project guidance
+
+Put project-specific conventions in the project's `AGENTS.md`. Codex reads it automatically. Claude Code 2.1.277+ can read it directly when no project `CLAUDE.md` takes precedence. On older versions, put `@AGENTS.md` in a small `CLAUDE.md` beside it. Keep personal preferences out of the shared project file.
+
+Run `make test` to exercise fresh, existing, conflicting, and repeat installation cases in temporary home directories. Review changes to `standards/shared.md` and `profiles/signal.md` like code before rolling them out; do not commit credentials or local auth files.
