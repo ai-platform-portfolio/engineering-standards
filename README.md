@@ -98,7 +98,7 @@ CI compares the public ruleset ID and `updated_at` timestamp with that verified
 version. Every subsequent ruleset edit invalidates the baseline, even if it only
 changes hidden bypass actors. A missing or stale baseline fails the audit; it
 cannot be refreshed with CI's read-only token. No owner credential is stored in
-the workflow. The initial empty baseline must be populated after rule activation
+the workflow. The baseline must cover every repository after rule activation
 before this change can pass its governance check or be merged.
 
 The module repository's `infrastructure-plan-required` check fails if planning
