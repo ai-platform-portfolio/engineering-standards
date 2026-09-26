@@ -1,0 +1,207 @@
+"""Read GitHub controls and check them against the portfolio's reviewed contract."""
+
+import argparse
+import base64
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+START = "<!-- governance-status:start -->"
+END = "<!-- governance-status:end -->"
+
+
+def api(path):
+    try:
+        result = subprocess.run(
+            ["gh", "api", path], capture_output=True, text=True, check=False, timeout=30,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"GitHub read timed out: {path}") from error
+    if result.returncode:
+        raise RuntimeError(f"GitHub read failed: {path}; verify access and retry")
+    return json.loads(result.stdout)
+
+
+def pages(path, fetch=api):
+    items = []
+    for page in range(1, 101):
+        separator = "&" if "?" in path else "?"
+        batch = fetch(f"{path}{separator}per_page=100&page={page}")
+        if not isinstance(batch, list):
+            raise ValueError(f"Expected a list from {path}")
+        items.extend(batch)
+        if len(batch) < 100:
+            return items
+    raise ValueError(f"Pagination limit exceeded: {path}")
+
+
+def ruleset(spec, app_id):
+    """The same desired configuration is used for provisioning and auditing."""
+    return {
+        "name": "main",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+        "rules": [
+            {"type": "deletion"},
+            {"type": "non_fast_forward"},
+            {"type": "pull_request", "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": True,
+                "require_code_owner_review": True,
+                "require_last_push_approval": False,
+                "required_review_thread_resolution": True,
+                "allowed_merge_methods": ["merge", "squash", "rebase"],
+            }},
+            {"type": "required_status_checks", "parameters": {
+                "strict_required_status_checks_policy": True,
+                "do_not_enforce_on_create": False,
+                "required_status_checks": [
+                    {"context": name, "integration_id": app_id}
+                    for name in spec["checks"]
+                ],
+            }},
+        ],
+    }
+
+
+def differences(actual, expected, path="ruleset"):
+    """Ignore additional API fields, but never omit a required field or rule."""
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [f"{path}: missing object"]
+        findings = []
+        for key, value in expected.items():
+            findings.extend(differences(actual.get(key), value, f"{path}.{key}"))
+        return findings
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            return [f"{path}: missing list"]
+        if expected and isinstance(expected[0], dict):
+            identity = "type" if "type" in expected[0] else "context"
+            findings = []
+            if len(actual) != len(expected):
+                findings.append(f"{path}: expected {len(expected)} entries, found {len(actual)}")
+            for item in expected:
+                matches = [entry for entry in actual if entry.get(identity) == item[identity]]
+                if len(matches) != 1:
+                    findings.append(f"{path}: expected one {item[identity]}")
+                else:
+                    findings.extend(differences(matches[0], item, f"{path}.{item[identity]}"))
+            return findings
+        if sorted(actual) == sorted(expected):
+            return []
+    elif type(actual) is type(expected) and actual == expected:
+        return []
+    return [f"{path}: expected {expected!r}, found {actual!r}"]
+
+
+def inspect_repository(org, name, spec, contract, fetch=api):
+    prefix = f"repos/{org}/{name}"
+    info = fetch(prefix)
+    findings = []
+    if info.get("visibility") != "public":
+        findings.append("visibility must be public")
+    if info.get("default_branch") != "main" or info.get("archived") is not False:
+        findings.append("repository must be active with main as its default branch")
+    listing = pages(f"{prefix}/rulesets", fetch)
+    matches = [item for item in listing if item["name"] == "main"]
+    if len(matches) != 1:
+        findings.append("expected exactly one main ruleset")
+    else:
+        live = fetch(f"{prefix}/rulesets/{matches[0]['id']}")
+        findings.extend(differences(live, ruleset(spec, contract["checks_app_id"])))
+        effective = fetch(f"{prefix}/rules/branches/main")
+        effective_types = {
+            item["type"] for item in effective if item.get("ruleset_id") == matches[0]["id"]
+        }
+        required_types = {item["type"] for item in ruleset(spec, contract["checks_app_id"])["rules"]}
+        if not required_types.issubset(effective_types):
+            findings.append("the main ruleset is not effective on main")
+    owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
+    owners = base64.b64decode(owners_file["content"]).decode()
+    lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
+    if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
+        findings.append("CODEOWNERS must assign all files to the reviewed portfolio owner")
+    return {
+        "repository": name,
+        "visibility": info.get("visibility", "unknown"),
+        "branch": info.get("default_branch", "unknown"),
+        "checks": spec["checks"],
+        "findings": findings,
+    }
+
+
+def render(rows):
+    lines = [START, "| Repository | Visibility | Default branch | Merge controls | Required checks |",
+             "|---|---|---|---|---|"]
+    for row in rows:
+        checks = ", ".join(f"`{name}`" for name in row["checks"])
+        state = "drift detected" if row["findings"] else "enforced"
+        lines.append(f"| `{row['repository']}` | {row['visibility']} | `{row['branch']}` | {state} | {checks} |")
+    return "\n".join([*lines, END])
+
+
+def documentation_findings(text, expected):
+    if text.count(START) != 1 or text.count(END) != 1:
+        return ["README must contain exactly one governance status block"]
+    start = text.index(START)
+    end = text.index(END) + len(END)
+    if end <= start or text[start:end] != expected:
+        return ["README governance status differs from live GitHub controls"]
+    return []
+
+
+def audit(contract, readme, fetch=api):
+    org = contract["organization"]
+    discovered = {item["name"] for item in pages(f"orgs/{org}/repos?type=all", fetch)}
+    expected = set(contract["repositories"])
+    findings = []
+    if discovered != expected:
+        findings.append(f"repository inventory changed: added={sorted(discovered - expected)}, missing={sorted(expected - discovered)}")
+    rows = []
+    for name, spec in contract["repositories"].items():
+        try:
+            row = inspect_repository(org, name, spec, contract, fetch)
+        except (RuntimeError, ValueError, KeyError, TypeError) as error:
+            row = {"repository": name, "visibility": "unknown", "branch": "unknown",
+                   "checks": spec["checks"], "findings": [str(error)]}
+        rows.append(row)
+        findings.extend(f"{name}: {item}" for item in row["findings"])
+    block = render(rows)
+    findings.extend(documentation_findings(readme, block))
+    return {"status": "fail" if findings else "pass", "findings": findings, "repositories": rows}, block
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--contract", type=Path, default=ROOT / "governance/repositories.json")
+    parser.add_argument("--readme", type=Path, default=ROOT / "README.md")
+    parser.add_argument("--report", type=Path, default=ROOT / "reports/governance.json")
+    parser.add_argument("--ruleset", help="Print desired ruleset JSON for one repository; does not write to GitHub")
+    args = parser.parse_args()
+    contract = json.loads(args.contract.read_text())
+    if args.ruleset:
+        print(json.dumps(ruleset(contract["repositories"][args.ruleset], contract["checks_app_id"]), indent=2))
+        return 0
+    try:
+        report, block = audit(contract, args.readme.read_text())
+    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+        report, block = {"status": "error", "findings": [str(error)], "repositories": []}, ""
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2) + "\n")
+    summary = "## Portfolio governance audit\n\n" + block + "\n\n"
+    summary += "\n".join(f"- {finding}" for finding in report["findings"])
+    print(summary)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
+            stream.write(summary + "\n")
+    return {"pass": 0, "fail": 1, "error": 2}[report["status"]]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

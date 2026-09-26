@@ -59,14 +59,44 @@ the tools; the consumer invokes the emitted checker against the PR base and uplo
 the JSON report. See the acceptance repository for a working pinned consumer.
 Installation executes no consumer package scripts and needs no deployment secrets.
 
-The organisation currently uses GitHub Free with private repositories. GitHub's
-branch-protection API returned HTTP 403: upgrade or public visibility is required.
-CI reports failures, but **merging is not protected**. CODEOWNERS identifies the
-reviewer but does not enforce approval without the corresponding repository rule.
-After that capability is available, require quality checks on the current revision,
-owner review for policy/workflow changes, stale-approval dismissal and no agent bypass.
+The portfolio repositories are public and use active `main` rulesets requiring
+PRs, one code-owner approval, dismissal of stale approvals, resolved review
+threads and checks from GitHub Actions. Branches must be up to date before merge.
+Force pushes and deletion are blocked; the rulesets have no bypass actors.
+These settings are portfolio-specific, not requirements installed in consumers.
 
-Agent repair loops, model-based reviews and deployment automation are deferred.
+<!-- governance-status:start -->
+| Repository | Visibility | Default branch | Merge controls | Required checks |
+|---|---|---|---|---|
+| `engineering-standards` | public | `main` | enforced | `quality`, `governance` |
+| `engineering-acceptance` | public | `main` | enforced | `acceptance`, `quality` |
+| `terraform-modules` | public | `main` | enforced | `workflows`, `validate`, `structure`, `infrastructure-plan-required` |
+<!-- governance-status:end -->
+
+The [Portfolio governance workflow](https://github.com/ai-platform-portfolio/engineering-standards/actions/workflows/governance.yml)
+checks this table against live GitHub data on every PR, main push, daily at
+07:23 UTC and manual dispatch. It fails on visibility, inventory, default-branch,
+CODEOWNERS or ruleset drift, including disabled rules, bypass actors, missing
+checks and an unexpected check publisher. API failures fail the audit rather
+than reporting compliance. The run summary and JSON artifact show the findings;
+the audit never changes repository settings or rewrites this table automatically.
+Scheduled execution depends on GitHub Actions being enabled; check the latest
+run's timestamp as well as its result. New private repositories outside the
+token's visibility cannot be discovered; registered repositories becoming
+inaccessible fail the audit.
+
+Run `make governance-check` with an authenticated `gh` CLI to repeat the audit.
+The reviewed expectations are in `governance/repositories.json`. A deliberate
+policy change must update that contract, the affected live rules and this table
+together. Other repositories link here instead of repeating mutable status claims.
+
+The module repository's `infrastructure-plan-required` check fails if planning
+fails, is cancelled or is skipped. Fork PRs cannot satisfy it without a plan in
+a trusted same-repository branch. Deployment approval remains a separate gate.
+
+Agent repair loops and model-based reviews are deferred. Central infrastructure
+deployment is implemented in `terraform-modules`; see its
+[deployment workflow](https://github.com/ai-platform-portfolio/terraform-modules/blob/main/ci/README.md).
 
 ## Start here
 

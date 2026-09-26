@@ -56,3 +56,10 @@ check:
 	.venv/bin/python -m unittest discover -s tests -p test_review.py -v
 	.venv/bin/python -m unittest discover -s tests -p test_recheck_review.py -v
 	$(MAKE) test
+
+.PHONY: governance-test governance-check
+governance-test:
+	$(PYTHON) -m unittest discover -s tests -p 'test_governance.py' -v
+
+governance-check: governance-test
+	$(PYTHON) scripts/audit_governance.py
