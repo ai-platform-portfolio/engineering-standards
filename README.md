@@ -38,8 +38,11 @@ Import rules constrain direct dependencies, not every possible runtime access.
 Exceptions require an exact rule/file plus reason and owner in the trusted
 policy. Use symbol-specific exceptions for Terraform. Generated-file exclusions
 must also be declared there; inline suppression comments do not grant exceptions.
-Policy changes require a separate owner-approved adoption; a normal feature PR
-cannot change `engineering.yaml` or workflows to make itself pass.
+Policy changes require owner-approved adoption. Consumers may opt in with
+`--github-pr NUMBER`, `GH_TOKEN` with pull-request read access, and
+`GITHUB_REPOSITORY`. Approval must come from a base-revision owner for the current
+head. See [the adoption ADR](designs/adr-reviewed-policy-adoption.md) for the
+workflow wiring, trust boundary and acceptance cases.
 
 ### CI and enforcement status
 
