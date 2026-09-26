@@ -4,6 +4,16 @@ Scope: repositories owned by `ai-platform-portfolio` only. This document is not
 part of the shared installer, consumer policies, or requirements distributed with
 modules. Downstream repositories do not inherit it.
 
+## Pull requests
+
+- This is a portfolio organisation with one human owner. Open regular pull
+  requests by default; use draft status only when the owner explicitly asks.
+- Pending CI, owner review, approvals or dependencies belong in the PR's
+  acceptance checklist, not in an automatically chosen draft status. An open
+  PR is not a claim that checks have passed or that it is ready to merge.
+- Existing review requirements and per-command infrastructure approval gates
+  still apply. Being the sole owner does not waive them.
+
 ## Track outcomes through completion
 
 - Keep an acceptance checklist in the PR description that covers each requested
