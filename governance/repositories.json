@@ -3,6 +3,7 @@
   "code_owner": "michaela-links",
   "checks_app_id": 15368,
   "repositories": {
+    "ops-shared": {"checks": ["quality"]},
     "engineering-standards": {"checks": ["quality", "governance"]},
     "engineering-acceptance": {"checks": ["acceptance", "quality"]},
     "terraform-modules": {"checks": ["workflows", "validate", "structure", "infrastructure-plan-required"]}

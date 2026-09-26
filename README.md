@@ -43,16 +43,18 @@ Policy changes require owner-approved adoption. Consumers may opt in with
 `GITHUB_REPOSITORY`. Approval must come from a base-revision owner for the current
 head. See [the adoption ADR](designs/adr-reviewed-policy-adoption.md) for the
 workflow wiring, trust boundary and acceptance cases.
+Use `--policy-file PATH` for another tracked policy location. It reads that path
+from the base, protects changes to it, and adopts the approved head only after the
+same owner checks. Absolute paths and parent traversal are rejected.
 
 ### CI and enforcement status
 
-`actions/workflow-lint` validates workflow YAML and embedded shell using pinned
-Actionlint with mandatory ShellCheck on Linux x64 runners. Consumers opt in by
-pinning `ai-platform-portfolio/engineering-standards/actions/workflow-lint` to a
-full commit SHA. Missing ShellCheck fails the check; shell analysis is never
-silently disabled. Its acceptance fixture contains the unclosed loop that
-previously reached main. The shared pre-merge standard also requires a real PR
-plan and active merge rules; installing this action alone does not provide those.
+Reusable workflow orchestration now lives in
+[ops-shared](https://github.com/ai-platform-portfolio/ops-shared). Its workflow-lint
+template validates YAML and embedded shell with pinned Actionlint and mandatory
+ShellCheck. The malformed-shell regression fixture moved with the implementation.
+Consumers pin full commit SHAs; older immutable action references remain available
+in this repository's history. Policy definitions and the checker remain here.
 
 Consumers pin this repository's composite action to a full commit SHA. It installs
 the tools; the consumer invokes the emitted checker against the PR base and uploads
@@ -62,12 +64,15 @@ Installation executes no consumer package scripts and needs no deployment secret
 The portfolio repositories are public and use active `main` rulesets requiring
 PRs, one code-owner approval, dismissal of stale approvals, resolved review
 threads and checks from GitHub Actions. Branches must be up to date before merge.
-Force pushes and deletion are blocked; the rulesets have no bypass actors.
+Force pushes and deletion are blocked; the established rulesets have no bypass actors.
+The new ops-shared repository is awaiting its bootstrap and protection activation;
+the migration is incomplete until its audit passes with an owner-verified baseline.
 These settings are portfolio-specific, not requirements installed in consumers.
 
 <!-- governance-status:start -->
 | Repository | Visibility | Default branch | Merge controls | Required checks |
 |---|---|---|---|---|
+| `ops-shared` | unknown | `unknown` | drift detected | `quality` |
 | `engineering-standards` | public | `main` | enforced | `quality`, `governance` |
 | `engineering-acceptance` | public | `main` | enforced | `acceptance`, `quality` |
 | `terraform-modules` | public | `main` | enforced | `workflows`, `validate`, `structure`, `infrastructure-plan-required` |
