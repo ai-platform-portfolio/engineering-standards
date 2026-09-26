@@ -101,6 +101,12 @@ If you decline the prompt, no file changes. Rerun `make plan` or `make signal-pl
 
 ## Project guidance
 
+### Org delivery requirements
+
+[ai-platform-portfolio delivery requirements](standards/ai-platform-portfolio.md)
+require outcome-based PR checklists and current-revision evidence in this org.
+They are excluded from the shared installer and downstream consumer policies.
+
 ### Optional personal portfolio preference
 
 `profiles/portfolio.md` contains Michaela's preference for production-style
