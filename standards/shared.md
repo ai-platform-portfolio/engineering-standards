@@ -4,6 +4,7 @@
 - Keep changes scoped to the requested work.
 - Report what changed, how it was checked, and any remaining limitation.
 - Whenever asking the user to run a terminal command, include the exact command in a copyable code block and explain any placeholders. Commands reserved for the user must still be run by the user.
+- Keep environment-specific Azure identifiers, storage-account names and Key Vault names in organization GitHub Secrets or a cloud secret store, not Actions Variables or tracked configuration/documentation. Grant consuming repositories access explicitly; preserve established secret names (`TF_BACKEND_RESOURCE_NAME` means the Terraform storage account). Load values at runtime and redact reports/logs. Keep state, saved plans and local bootstrap inputs access-restricted and out of Git. Removing current references does not remove published history; obtain approval before rewriting history.
 
 ## Decisions reserved for the user
 
