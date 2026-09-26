@@ -13,8 +13,12 @@ def check(
     if not paths:
         return []
     with tempfile.TemporaryDirectory() as directory:
+        config = Path(directory) / "jscpd.json"
+        config.write_text(json.dumps({"ignore": []}))
         command = [
             str(tools / "jscpd"),
+            "--config",
+            str(config),
             "--silent",
             "--reporters",
             "json",
@@ -28,7 +32,6 @@ def check(
             "mild",
             "--threshold",
             "100",
-            "--gitignore",
             *paths,
         ]
         result = subprocess.run(command, cwd=root, text=True, capture_output=True)

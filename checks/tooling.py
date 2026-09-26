@@ -25,6 +25,7 @@ def check(root: Path, policy: dict[str, Any], tools: Path) -> list[Finding]:
                             "ruff",
                             "check",
                             "--isolated",
+                            "--no-respect-gitignore",
                             "--select",
                             "E4,E7,E9,F,I,B,UP",
                             *python,
@@ -32,7 +33,16 @@ def check(root: Path, policy: dict[str, Any], tools: Path) -> list[Finding]:
                     ),
                     (
                         "PY002",
-                        [sys.executable, "-m", "ruff", "format", "--isolated", "--check", *python],
+                        [
+                            sys.executable,
+                            "-m",
+                            "ruff",
+                            "format",
+                            "--isolated",
+                            "--no-respect-gitignore",
+                            "--check",
+                            *python,
+                        ],
                     ),
                     (
                         "PY003",
