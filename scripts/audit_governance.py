@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -100,6 +101,15 @@ def differences(actual, expected, path="ruleset"):
     return [f"{path}: expected {expected!r}, found {actual!r}"]
 
 
+def canonical_timestamp(value):
+    if not isinstance(value, str):
+        raise ValueError("Ruleset update timestamp is missing")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("Ruleset update timestamp must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds")
+
+
 def capture_baseline(contract, fetch=api):
     owner = fetch("user")["login"]
     if owner != contract["code_owner"]:
@@ -117,7 +127,7 @@ def capture_baseline(contract, fetch=api):
         if not live.get("updated_at"):
             raise ValueError(f"{name}: ruleset update timestamp is missing")
         baseline["rulesets"][name] = {
-            "ruleset_id": live["id"], "updated_at": live["updated_at"], "bypass_actors": [],
+            "ruleset_id": live["id"], "updated_at": canonical_timestamp(live["updated_at"]), "bypass_actors": [],
         }
     return baseline
 
@@ -139,7 +149,7 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         baseline = baseline or {}
         captured = baseline.get("rulesets", {}).get(name)
         expected_capture = {
-            "ruleset_id": live.get("id"), "updated_at": live.get("updated_at"), "bypass_actors": [],
+            "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")), "bypass_actors": [],
         }
         if (baseline.get("verified_by") != contract["code_owner"] or not live.get("updated_at")
                 or captured != expected_capture):

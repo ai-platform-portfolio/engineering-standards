@@ -3,7 +3,7 @@
   "rulesets": {
     "terraform-modules": {
       "ruleset_id": 24046262,
-      "updated_at": "2026-09-26T23:09:11.898+01:00",
+      "updated_at": "2026-09-26T22:09:11.898000+00:00",
       "bypass_actors": []
     }
   }

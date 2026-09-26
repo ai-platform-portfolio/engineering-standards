@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from audit_governance import api, audit, capture_baseline, documentation_findings, pages, render, ruleset
+from audit_governance import api, audit, canonical_timestamp, capture_baseline, documentation_findings, pages, render, ruleset
 
 
 class GovernanceTest(unittest.TestCase):
@@ -19,7 +19,7 @@ class GovernanceTest(unittest.TestCase):
         self.live = ruleset(self.contract["repositories"]["platform"], 15368)
         self.live.update(id=7, updated_at="2026-09-26T22:00:00.000Z")
         self.baseline = {"verified_by": "owner", "rulesets": {"platform": {
-            "ruleset_id": 7, "updated_at": self.live["updated_at"], "bypass_actors": [],
+            "ruleset_id": 7, "updated_at": canonical_timestamp(self.live["updated_at"]), "bypass_actors": [],
         }}}
         self.responses = {
             "user": {"login": "owner"},
@@ -48,6 +48,15 @@ class GovernanceTest(unittest.TestCase):
         self.assertEqual(self.run_audit()["status"], "pass")
         self.live["updated_at"] = "2026-09-26T22:00:01.000Z"
         self.assertEqual(self.run_audit()["status"], "fail")
+
+    def test_owner_and_ci_timezone_representations_match_without_losing_precision(self):
+        self.live["updated_at"] = "2026-09-26T23:00:00.000+01:00"
+        del self.live["bypass_actors"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        self.live["updated_at"] = "2026-09-26T22:00:00.001Z"
+        self.assertEqual(self.run_audit()["status"], "fail")
+        with self.assertRaisesRegex(ValueError, "timezone"):
+            canonical_timestamp("2026-09-26T22:00:00")
 
     def test_missing_untrusted_or_recreated_baseline_fails(self):
         for change in (lambda b: b.update(verified_by="another-user"),
