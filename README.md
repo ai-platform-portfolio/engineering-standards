@@ -46,6 +46,14 @@ workflow wiring, trust boundary and acceptance cases.
 
 ### CI and enforcement status
 
+`actions/workflow-lint` validates workflow YAML and embedded shell using pinned
+Actionlint with mandatory ShellCheck on Linux x64 runners. Consumers opt in by
+pinning `ai-platform-portfolio/engineering-standards/actions/workflow-lint` to a
+full commit SHA. Missing ShellCheck fails the check; shell analysis is never
+silently disabled. Its acceptance fixture contains the unclosed loop that
+previously reached main. The shared pre-merge standard also requires a real PR
+plan and active merge rules; installing this action alone does not provide those.
+
 Consumers pin this repository's composite action to a full commit SHA. It installs
 the tools; the consumer invokes the emitted checker against the PR base and uploads
 the JSON report. See the acceptance repository for a working pinned consumer.

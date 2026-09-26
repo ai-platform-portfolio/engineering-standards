@@ -13,4 +13,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./
+      - uses: ./actions/workflow-lint
+      - name: Prove malformed shell is rejected
+        run: PATH="$RUNNER_TEMP:$PATH" bash tests/test_workflow_lint.sh
       - run: make check
