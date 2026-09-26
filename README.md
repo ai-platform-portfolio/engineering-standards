@@ -16,7 +16,7 @@ make verify
 
 The shared standard is in `standards/shared.md`. Its adapters are `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md`. This works with the older Claude Code versions that do not read `AGENTS.md` directly. Existing symlinks, non-regular files, and damaged section markers require manual review; the script changes neither target until those issues are resolved. A developer should also review their existing instructions for a semantic conflict, since the script can preserve text but cannot judge whether two rules agree.
 
-The shared standard reserves design and live-infrastructure decisions for the developer. Agent auto modes may approve tool execution, but they do not make those decisions. Review these boundaries alongside any existing personal or project instructions before installing.
+The shared standard reserves design and live-infrastructure decisions for the developer, and keeps signing-key access with them. Agent auto modes may approve tool execution, but they do not make those decisions or replace the required check before an apply or deployment. Review these boundaries alongside any existing personal or project instructions before installing.
 
 ## Optional Signal style
 
