@@ -7,13 +7,14 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from audit_governance import api, audit, canonical_timestamp, capture_baseline, documentation_findings, pages, render, ruleset
+from audit_governance import api, audit, canonical_timestamp, capture_baseline, pages, repository_policy, ruleset
 
 
 class GovernanceTest(unittest.TestCase):
     def setUp(self):
         self.contract = {
             "organization": "example", "code_owner": "owner", "checks_app_id": 15368,
+            "defaults": {"checks": ["quality"]},
             "repositories": {"platform": {"checks": ["quality", "plan-required"]}},
         }
         self.live = ruleset(self.contract["repositories"]["platform"], 15368)
@@ -34,13 +35,10 @@ class GovernanceTest(unittest.TestCase):
                 "content": base64.b64encode(b"* @owner\n").decode(),
             },
         }
-        self.readme = render([{"repository": "platform", "visibility": "public", "branch": "main",
-                               "checks": ["quality", "plan-required"], "findings": []}])
-
     def run_audit(self):
-        return audit(self.contract, self.readme, lambda path: copy.deepcopy(self.responses[path]), self.baseline)[0]
+        return audit(self.contract, lambda path: copy.deepcopy(self.responses[path]), self.baseline)[0]
 
-    def test_live_controls_match_documentation(self):
+    def test_live_controls_match_policy(self):
         self.assertEqual(self.run_audit()["status"], "pass")
 
     def test_read_only_response_uses_only_the_exact_owner_verified_version(self):
@@ -64,7 +62,7 @@ class GovernanceTest(unittest.TestCase):
                        lambda b: b["rulesets"]["platform"].update(ruleset_id=8)):
             baseline = copy.deepcopy(self.baseline)
             change(baseline)
-            report, _ = audit(self.contract, self.readme, self.responses.__getitem__, baseline)
+            report, _ = audit(self.contract, self.responses.__getitem__, baseline)
             self.assertEqual(report["status"], "fail")
 
     def test_owner_can_capture_only_complete_correct_rulesets(self):
@@ -120,10 +118,46 @@ class GovernanceTest(unittest.TestCase):
                 self.assertEqual(self.run_audit()["status"], "fail")
                 self.responses["repos/example/platform"] = original
 
-    def test_inventory_additions_and_missing_repositories_fail(self):
-        for listing in ([], [{"name": "platform"}, {"name": "new-project"}]):
-            self.responses["orgs/example/repos?type=all&per_page=100&page=1"] = listing
-            self.assertIn("inventory changed", " ".join(self.run_audit()["findings"]))
+    def add_repository(self):
+        self.responses["orgs/example/repos?type=all&per_page=100&page=1"].append({"name": "new-project"})
+        for path, value in list(self.responses.items()):
+            if path.startswith("repos/example/platform"):
+                self.responses[path.replace("/platform", "/new-project")] = copy.deepcopy(value)
+        live = ruleset(self.contract["defaults"], 15368)
+        live.update(id=7, updated_at=self.live["updated_at"])
+        self.responses["repos/example/new-project/rulesets/7"] = live
+
+    def test_new_repository_uses_defaults_and_appears_in_report_without_inventory_edit(self):
+        self.add_repository()
+        baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        report, table = audit(self.contract, self.responses.__getitem__, baseline)
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual([row["repository"] for row in report["repositories"]], ["new-project", "platform"])
+        self.assertEqual(report["repositories"][0]["checks"], ["quality"])
+        self.assertEqual(report["repositories"][1]["checks"], ["quality", "plan-required"])
+        self.assertIn("`new-project`", table)
+        self.assertNotIn("new-project", self.contract["repositories"])
+
+    def test_new_repository_fails_for_missing_controls_and_baseline(self):
+        self.add_repository()
+        report = self.run_audit()
+        self.assertEqual(report["status"], "fail")
+        self.assertIn("new-project: ruleset version lacks", " ".join(report["findings"]))
+        self.responses["repos/example/new-project/rulesets?per_page=100&page=1"] = []
+        report = self.run_audit()
+        self.assertEqual(report["findings"], ["new-project: expected exactly one main ruleset"])
+        del self.responses["repos/example/new-project/contents/.github/CODEOWNERS?ref=main"]
+        report = self.run_audit()
+        self.assertEqual(len(report["findings"]), 2)
+        self.assertIn("cannot verify CODEOWNERS", report["findings"][1])
+        self.assertEqual(report["repositories"][0]["visibility"], "public")
+
+    def test_configured_repository_cannot_disappear_from_audit(self):
+        self.responses["orgs/example/repos?type=all&per_page=100&page=1"] = []
+        del self.responses["repos/example/platform"]
+        report = self.run_audit()
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["repositories"][0]["repository"], "platform")
 
     def test_owner_coverage_cannot_be_narrowed(self):
         self.responses["repos/example/platform/contents/.github/CODEOWNERS?ref=main"]["content"] = (
@@ -131,17 +165,12 @@ class GovernanceTest(unittest.TestCase):
         )
         self.assertEqual(self.run_audit()["status"], "fail")
 
-    def test_stale_readme_and_duplicate_markers_fail(self):
-        for text in (self.readme.replace("public", "private"), self.readme + self.readme, "No table"):
-            with self.subTest(text=text):
-                self.assertTrue(documentation_findings(text, self.readme))
-
     def test_api_failure_is_not_compliance(self):
         def unavailable(path):
             if path.endswith("/rulesets/7"):
                 raise RuntimeError("GitHub read failed: ruleset")
             return self.responses[path]
-        report, _ = audit(self.contract, self.readme, unavailable)
+        report, _ = audit(self.contract, unavailable)
         self.assertEqual(report["status"], "fail")
         self.assertIn("GitHub read failed", " ".join(report["findings"]))
 
@@ -161,12 +190,11 @@ class GovernanceTest(unittest.TestCase):
         self.assertEqual(len(pages("orgs/example/repos?type=all", fetch)), 101)
         self.assertEqual(len(calls), 2)
 
-    def test_checked_in_contract_and_readme_agree(self):
+    def test_checked_in_default_and_terraform_override(self):
         root = Path(__file__).resolve().parents[1]
         contract = json.loads((root / "governance/repositories.json").read_text())
-        rows = [{"repository": name, "visibility": "public", "branch": "main",
-                 "checks": spec["checks"], "findings": []} for name, spec in contract["repositories"].items()]
-        self.assertEqual(documentation_findings((root / "README.md").read_text(), render(rows)), [])
+        self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
+        self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
 
 
 if __name__ == "__main__":
