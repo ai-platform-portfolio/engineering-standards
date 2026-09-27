@@ -26,7 +26,9 @@ class GovernanceTest(unittest.TestCase):
         self.responses = {
             "user": {"login": "owner"},
             "orgs/example/teams/platform-team/memberships/owner": {"state": "active"},
-            "orgs/example/teams/platform-team/repos/example/platform": {"permissions": {"push": True}},
+            "orgs/example/teams/platform-team/repos?per_page=100&page=1": [
+                {"name": "platform", "permissions": {"push": True}},
+            ],
             "orgs/example/repos?type=all&per_page=100&page=1": [{"name": "platform"}],
             "repos/example/platform": {"visibility": "public", "default_branch": "main", "archived": False},
             "repos/example/platform/rulesets?per_page=100&page=1": [{"name": "main", "id": 7}],
@@ -139,11 +141,11 @@ class GovernanceTest(unittest.TestCase):
             capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_capture_rejects_an_owner_team_without_write_access(self):
-        repos = "orgs/example/teams/platform-team/repos/example/platform"
-        self.responses[repos] = {"permissions": {"push": False, "pull": True}}
+        repos = "orgs/example/teams/platform-team/repos?per_page=100&page=1"
+        self.responses[repos] = [{"name": "platform", "permissions": {"push": False, "pull": True}}]
         with self.assertRaisesRegex(ValueError, "write access"):
             capture_baseline(self.contract, self.responses.__getitem__)
-        del self.responses[repos]
+        self.responses[repos] = []
         with self.assertRaisesRegex(ValueError, "write access"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
@@ -202,9 +204,9 @@ class GovernanceTest(unittest.TestCase):
         live = ruleset(self.contract["defaults"], 15368)
         live.update(id=7, updated_at=self.live["updated_at"])
         self.responses["repos/example/new-project/rulesets/7"] = live
-        self.responses["orgs/example/teams/platform-team/repos/example/new-project"] = {
-            "permissions": {"push": True},
-        }
+        self.responses["orgs/example/teams/platform-team/repos?per_page=100&page=1"].append(
+            {"name": "new-project", "permissions": {"push": True}}
+        )
 
     def test_new_repository_uses_defaults_and_appears_in_report_without_inventory_edit(self):
         self.add_repository()

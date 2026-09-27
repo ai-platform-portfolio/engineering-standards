@@ -137,14 +137,17 @@ def team_member(contract, login, fetch=api):
         return False
 
 
-def team_writes(contract, repository, fetch=api):
-    """GitHub ignores a code-owner team that lacks write access, without reporting it."""
-    org = contract["organization"]
-    path = f"orgs/{org}/teams/{owner_team(contract)}/repos/{org}/{repository}"
-    try:
-        return fetch(path).get("permissions", {}).get("push") is True
-    except (RuntimeError, ValueError, KeyError, TypeError):
-        return False
+def team_writes(contract, fetch=api):
+    """GitHub ignores a code-owner team that lacks write access, without reporting it.
+
+    Listed rather than checked per repository: the single-repository permission
+    endpoint answers 204 with no body, which carries no permission to read.
+    """
+    path = f"orgs/{contract['organization']}/teams/{owner_team(contract)}/repos"
+    return {
+        item["name"] for item in pages(path, fetch)
+        if item.get("permissions", {}).get("push") is True
+    }
 
 
 def capture_baseline(contract, fetch=api):
@@ -152,9 +155,10 @@ def capture_baseline(contract, fetch=api):
     if not team_member(contract, owner, fetch):
         raise ValueError("Capture requires an active member of the configured owner team")
     baseline = {"verified_by": owner, "verified_for": contract["code_owner"], "rulesets": {}}
+    writable = team_writes(contract, fetch)
     for name, spec in repositories(contract, fetch).items():
         prefix = f"repos/{contract['organization']}/{name}"
-        if not team_writes(contract, name, fetch):
+        if name not in writable:
             raise ValueError(f"{name}: the owner team needs write access to be a code owner")
         matches = [item for item in pages(f"{prefix}/rulesets", fetch) if item["name"] == "main"]
         if len(matches) != 1:
