@@ -1,0 +1,7 @@
+{
+  "organisation": "ai-platform-portfolio",
+  "project_id": "28106445-603d-4d25-a7bf-f5ec45794839",
+  "issue_prefix": "AI",
+  "max_age_seconds": 86400,
+  "exempt_branches": ["main", "master"]
+}

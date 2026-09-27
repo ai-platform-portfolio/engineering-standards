@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
@@ -22,15 +23,19 @@ def common_dir(repo):
 
 
 def warning(branch, snapshot):
-    if branch in ("main", "master"):
+    policy = (snapshot or {}).get("policy", {})
+    if branch in policy.get("exempt_branches", ["main", "master"]):
         return None
-    match = re.search(r"(?:^|/)(AI-[1-9][0-9]*)(?=$|[-/])", branch, re.I)
+    prefix = policy.get("issue_prefix", "AI")
+    match = re.search(rf"(?:^|/)({re.escape(prefix)}-[1-9][0-9]*)(?=$|[-/])", branch, re.I)
     if not match:
-        return f"{branch}: include a Linear issue, e.g. ai-7-soft-linear-hooks."
-    if not snapshot or time.time() - snapshot["verified_at"] > 86400:
-        return f"{branch}: Linear snapshot missing or older than 24h; verify the issue in Linear and refresh it."
+        return f"{branch}: include a Linear issue, e.g. {prefix.lower()}-7-description."
+    if not snapshot or not 0 <= time.time() - snapshot["verified_at"] <= policy.get(
+        "max_age_seconds", 86400
+    ):
+        return f"{branch}: Linear snapshot missing or stale; verify the issue in Linear and refresh it."
     if match[1].upper() not in snapshot["issues"]:
-        return f"{branch}: issue not in the verified Org Governance snapshot; check Linear and refresh it."
+        return f"{branch}: issue not in the verified project snapshot; check Linear and refresh it."
     return None
 
 
@@ -48,7 +53,11 @@ def check(hook, args):
             branch = git(".", "branch", "--show-current")
             if branch:
                 branches.append(branch)
-        path = common_dir(".") / "portfolio-linear" / "issues.json"
+        path = Path(
+            os.environ.get(
+                "PORTFOLIO_LINEAR_SNAPSHOT", common_dir(".") / "portfolio-linear" / "issues.json"
+            )
+        )
         snapshot = json.loads(path.read_text()) if path.exists() else None
         for branch in branches:
             message = warning(branch, snapshot)

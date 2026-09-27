@@ -1,51 +1,98 @@
-# Optional portfolio Linear hooks
+# Optional Linear branch checks
 
-These local hooks warn about missing or unverified issue IDs in working branch
-names. They never block Git, contact Linear, load signing keys, or change global
-configuration. They are not installed by the shared agent setup. Scope is the
-portfolio repositories explicitly passed to the installer.
+Portfolio decision: soft, local warnings, including Git worktrees. Missing,
+unknown or stale issue data never blocks Git. This is opt-in developer setup;
+the shared agent installer and downstream consumers do not inherit it.
 
-`reference-transaction` checks newly created branches; `post-checkout` checks
-switches and worktree checkouts, including existing branches. Both hooks live in
-the common Git directory and cover linked worktrees. A command creating and
-checking out a branch can emit a warning from both hooks. `main` and `master` are
-exempt; detached checkouts have no branch to check.
+## Scope and policy
 
-## Install or refresh
+Each developer selects their own workspace directory. Git conditionally loads
+the dispatcher for repositories beneath that directory, including future clones
+and new repositories. Linked worktrees use the parent repository's Git directory.
+Only remotes belonging to the configured GitHub organisation trigger Linear
+warnings. A new repository without a remote is unchecked until that remote is set.
 
-Read the current Org Governance issues through the authenticated Linear MCP
-connection, including all result pages. Save only their IDs and the lookup time
-in a local JSON snapshot, for example:
+`policies/portfolio-linear.json` defines the organisation, Linear project, issue
+prefix, exempt branches and maximum snapshot age. Paths and authentication are
+local installation settings. For another organisation, supply a reviewed policy
+with `HOOK_POLICY`; do not distribute personal paths or credentials.
 
-```json
-{"verified_at": 0, "issues": ["AI-7"]}
-```
+`reference-transaction` checks new branches; `post-checkout` also covers switching
+to existing branches and creating worktrees for them. One command can trigger
+both warnings. Detached checkouts have no branch to validate.
 
-Replace `0` with the Unix timestamp of that successful lookup. Do not mark an old
-list fresh or store tokens in this file. Install or refresh each repository with:
+## Install and update
 
-```sh
-python3 scripts/linear_hook.py install /path/to/repo --snapshot /path/to/issues.json
-```
+Requires Git with `reference-transaction` support and Python 3.9+. Check out a
+reviewed release tag or full commit of engineering-standards before installation.
+The installer copies the runtime locally and records its commit and file hashes;
+it never downloads a newer version automatically.
 
-Installation copies the runtime and snapshot into `.git/portfolio-linear/`, so
-removing the source worktree does not break installed hooks. Reinstallation is
-idempotent. Existing custom hooks or `core.hooksPath` cause the installer to stop
-before modifying either hook; they require explicit integration rather than
-being overwritten. Other hooks are left untouched.
-
-## Offline behaviour and removal
-
-A snapshot older than 24 hours, an unknown issue, corrupt data or unavailable
-validation produces a warning and lets Git proceed. A recognised ID only proves
-membership at the last lookup, not live issue state. Refresh through Linear when
-starting a session or after creating an issue. The user can override a warning by
-continuing; there is no mandatory bypass flag or remote merge restriction.
+With individual API authentication available as described below, installation is:
 
 ```sh
-python3 scripts/linear_hook.py remove /path/to/repo
+make hooks-install WORKSPACE="$HOME/work"
 ```
 
-Removal refuses to delete hooks modified since installation. This mechanism is
-user-controlled and can be disabled; it is not a security boundary. Tests exercise
-real Git branches and linked worktrees in temporary repositories.
+The installer fetches a fresh snapshot before enabling the hooks. Alternatively,
+use an existing authenticated MCP connection without exposing its credentials:
+
+Read all Org Governance issue pages through the authenticated Linear connection
+and save a local snapshot containing `project_id`, `verified_at` (the actual Unix
+lookup time), and `issues` (the returned identifiers). Do not fabricate freshness
+or store credentials in the snapshot. Then run:
+
+```sh
+make hooks-install WORKSPACE="$HOME/work" SNAPSHOT=/path/to/verified-issues.json
+make hooks-status WORKSPACE="$HOME/work"
+```
+
+Repeat for additional workspace roots. Installation adds one directory-scoped
+include to your global Git configuration and stores its runtime under
+`WORKSPACE/.portfolio-linear/`. Nothing under that directory belongs in a project
+repository. Run the same install command from a newer reviewed revision to update;
+repeat from the previous revision to roll back. Reinstallation is idempotent.
+
+Existing `.git/hooks` are forwarded their original arguments and input; their
+exit codes still apply. An existing global `core.hooksPath` stops installation
+for explicit reconciliation. Repository/worktree-specific `core.hooksPath`
+overrides are preserved and take precedence, so those repositories need explicit
+integration to receive these warnings. Custom hooks remain owner-controlled.
+
+## Refresh and offline behaviour
+
+Refresh after creating issues or when starting a session with a stale snapshot.
+An agent can fetch a complete snapshot through the Linear MCP connection and
+rerun installation. Developers can refresh directly with:
+
+```sh
+make hooks-refresh WORKSPACE="$HOME/work"
+```
+
+That command reads the developer's own `LINEAR_OAUTH_TOKEN` or `LINEAR_API_KEY`
+from the environment. Supply it through an approved secret manager; never put a
+token in a command argument or tracked file. MCP login does not automatically
+export a token to this command. OAuth and personal-key header formats follow
+[Linear's API documentation](https://linear.app/developers/graphql).
+
+Refresh fetches every issue page for the configured project and replaces the
+snapshot only on success. Errors retain the prior snapshot. The hooks themselves
+make no network requests. A recognised identifier proves membership at the last
+lookup, not the current issue state. Expired, missing or unknown data warns;
+continuing is the explicit soft override. This is not a security boundary.
+
+## Uninstall
+
+```sh
+make hooks-uninstall WORKSPACE="$HOME/work"
+```
+
+This removes only the installer's exact Git include. Original repository hooks
+remain available; local runtime files remain for inspection or reinstallation.
+If older per-repository installation was used, remove those managed hooks with
+`python3 scripts/linear_hook.py remove /path/to/repo` before enabling workspace
+installation. That command refuses to remove hooks somebody has edited.
+
+Tests use temporary repositories, worktrees, clones and isolated Git configuration.
+They cover matching/unrelated organisations, existing hooks, offline data,
+pagination, idempotent install and rollback without changing developer credentials.
