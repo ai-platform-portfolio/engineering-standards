@@ -1,6 +1,6 @@
 {
   "organization": "ai-platform-portfolio",
-  "code_owner": "michaela-links",
+  "code_owner": "michaelalinks",
   "checks_app_id": 15368,
   "defaults": {"checks": ["quality"]},
   "repositories": {
