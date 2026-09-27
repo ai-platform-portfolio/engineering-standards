@@ -70,6 +70,17 @@ def ruleset(spec, app_id):
     }
 
 
+def repository_policy(contract, name):
+    return {**contract["defaults"], **contract["repositories"].get(name, {})}
+
+
+def repositories(contract, fetch=api):
+    discovered = {item["name"] for item in pages(f"orgs/{contract['organization']}/repos?type=all", fetch)}
+    # Keep explicitly configured repositories in scope if they become inaccessible.
+    return {name: repository_policy(contract, name)
+            for name in sorted(discovered | set(contract["repositories"]))}
+
+
 def differences(actual, expected, path="ruleset"):
     """Ignore additional API fields, but never omit a required field or rule."""
     if isinstance(expected, dict):
@@ -115,7 +126,7 @@ def capture_baseline(contract, fetch=api):
     if owner != contract["code_owner"]:
         raise ValueError("Capture requires the configured owner's authenticated account")
     baseline = {"verified_by": owner, "rulesets": {}}
-    for name, spec in contract["repositories"].items():
+    for name, spec in repositories(contract, fetch).items():
         prefix = f"repos/{contract['organization']}/{name}"
         matches = [item for item in pages(f"{prefix}/rulesets", fetch) if item["name"] == "main"]
         if len(matches) != 1:
@@ -165,11 +176,14 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         required_types = {item["type"] for item in ruleset(spec, contract["checks_app_id"])["rules"]}
         if not required_types.issubset(effective_types):
             findings.append("the main ruleset is not effective on main")
-    owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
-    owners = base64.b64decode(owners_file["content"]).decode()
-    lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
-    if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
-        findings.append("CODEOWNERS must assign all files to the reviewed portfolio owner")
+    try:
+        owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
+        owners = base64.b64decode(owners_file["content"]).decode()
+        lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
+        if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
+            findings.append("CODEOWNERS must assign all files to the reviewed portfolio owner")
+    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+        findings.append(f"cannot verify CODEOWNERS: {error}")
     return {
         "repository": name,
         "visibility": info.get("visibility", "unknown"),
@@ -189,25 +203,11 @@ def render(rows):
     return "\n".join([*lines, END])
 
 
-def documentation_findings(text, expected):
-    if text.count(START) != 1 or text.count(END) != 1:
-        return ["README must contain exactly one governance status block"]
-    start = text.index(START)
-    end = text.index(END) + len(END)
-    if end <= start or text[start:end] != expected:
-        return ["README governance status differs from live GitHub controls"]
-    return []
-
-
-def audit(contract, readme, fetch=api, baseline=None):
+def audit(contract, fetch=api, baseline=None):
     org = contract["organization"]
-    discovered = {item["name"] for item in pages(f"orgs/{org}/repos?type=all", fetch)}
-    expected = set(contract["repositories"])
     findings = []
-    if discovered != expected:
-        findings.append(f"repository inventory changed: added={sorted(discovered - expected)}, missing={sorted(expected - discovered)}")
     rows = []
-    for name, spec in contract["repositories"].items():
+    for name, spec in repositories(contract, fetch).items():
         try:
             row = inspect_repository(org, name, spec, contract, fetch, baseline)
         except (RuntimeError, ValueError, KeyError, TypeError) as error:
@@ -216,14 +216,12 @@ def audit(contract, readme, fetch=api, baseline=None):
         rows.append(row)
         findings.extend(f"{name}: {item}" for item in row["findings"])
     block = render(rows)
-    findings.extend(documentation_findings(readme, block))
     return {"status": "fail" if findings else "pass", "findings": findings, "repositories": rows}, block
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--contract", type=Path, default=ROOT / "governance/repositories.json")
-    parser.add_argument("--readme", type=Path, default=ROOT / "README.md")
     parser.add_argument("--report", type=Path, default=ROOT / "reports/governance.json")
     parser.add_argument("--baseline", type=Path, default=ROOT / "governance/bypass-baseline.json")
     parser.add_argument("--ruleset", help="Print desired ruleset JSON for one repository; does not write to GitHub")
@@ -231,7 +229,7 @@ def main():
     args = parser.parse_args()
     contract = json.loads(args.contract.read_text())
     if args.ruleset:
-        print(json.dumps(ruleset(contract["repositories"][args.ruleset], contract["checks_app_id"]), indent=2))
+        print(json.dumps(ruleset(repository_policy(contract, args.ruleset), contract["checks_app_id"]), indent=2))
         return 0
     if args.capture_baseline:
         try:
@@ -241,7 +239,7 @@ def main():
             print(str(error), file=sys.stderr)
             return 2
     try:
-        report, block = audit(contract, args.readme.read_text(), baseline=json.loads(args.baseline.read_text()))
+        report, block = audit(contract, baseline=json.loads(args.baseline.read_text()))
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
         report, block = {"status": "error", "findings": [str(error)], "repositories": []}, ""
     args.report.parent.mkdir(parents=True, exist_ok=True)

@@ -113,6 +113,9 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--base", required=True)
     parser.add_argument(
+        "--policy-file", default="engineering.yaml", help="Tracked repository-relative policy path"
+    )
+    parser.add_argument(
         "--policy",
         type=Path,
         help="Trusted policy outside the candidate checkout; defaults to base revision",
@@ -127,11 +130,18 @@ def main() -> int:
     args = parser.parse_args()
     try:
         root = args.root.resolve()
+        policy_path = Path(args.policy_file)
+        if (
+            policy_path.is_absolute()
+            or ".." in policy_path.parts
+            or args.policy_file.startswith("-")
+        ):
+            raise ValueError("--policy-file must be a repository-relative path")
         git(root, "rev-parse", "--verify", args.base + "^{tree}")
         text = (
             args.policy.read_text()
             if args.policy
-            else git(root, "show", f"{args.base}:engineering.yaml")
+            else git(root, "show", f"{args.base}:{args.policy_file}")
         )
         policy = load_policy(text)
         adoption = None
@@ -139,7 +149,7 @@ def main() -> int:
         protected = [
             path
             for path in changed
-            if path in {"engineering.yaml", ".github/CODEOWNERS"}
+            if path in {args.policy_file, "engineering.yaml", ".github/CODEOWNERS"}
             or any(fnmatchcase(path, pattern) for pattern in policy.get("protected_paths", []))
         ]
         if args.github_pr and protected:
@@ -147,8 +157,14 @@ def main() -> int:
                 raise ValueError("--github-pr cannot be combined with an external --policy")
             adoption = review.github_approval(root, args.base, args.github_pr)
             if adoption:
-                policy = load_policy(git(root, "show", "HEAD:engineering.yaml"))
+                policy = load_policy(git(root, "show", f"HEAD:{args.policy_file}"))
         findings = evaluate(root, args.base, policy, args.tools.resolve())
+        if args.policy_file in changed and not any(
+            finding.rule == "POLICY001" and finding.file == args.policy_file for finding in findings
+        ):
+            findings.append(
+                Finding("POLICY001", args.policy_file, 1, "Policy changes require owner approval.")
+            )
         if adoption:
             findings = [finding for finding in findings if finding.rule != "POLICY001"]
         report: dict[str, Any] = {

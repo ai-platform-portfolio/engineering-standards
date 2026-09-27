@@ -56,3 +56,15 @@ See [installation, refresh, limitations and removal](../docs/linear-hooks.md).
 This extends the existing org-only completion rule with its Linear record and
 adds an opt-in local check. It does not weaken owner approvals, required CI or
 existing hooks, and introduces no downstream requirement.
+
+## Repository governance
+
+Discover organisation repositories from GitHub and audit each against the default
+governance policy plus reviewed repository-specific overrides. Adding a repository
+must not require an inventory edit. Missing protections or unverifiable controls
+must still fail, with findings naming the affected repository and control.
+
+Publish the discovered catalogue and findings in the audit run summary and report.
+Link to that evidence instead of maintaining a static table claiming compliance.
+Discovery is read-only: provisioning protections and refreshing the owner-verified
+no-bypass baseline remain separate, reviewed operations.

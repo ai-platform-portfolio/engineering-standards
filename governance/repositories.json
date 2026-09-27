@@ -2,6 +2,7 @@
   "organization": "ai-platform-portfolio",
   "code_owner": "michaela-links",
   "checks_app_id": 15368,
+  "defaults": {"checks": ["quality"]},
   "repositories": {
     "engineering-standards": {"checks": ["quality", "governance"]},
     "engineering-acceptance": {"checks": ["acceptance", "quality"]},
