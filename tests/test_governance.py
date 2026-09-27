@@ -3,27 +3,32 @@ import copy
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from audit_governance import api, audit, canonical_timestamp, capture_baseline, pages, repository_policy, ruleset
+from audit_governance import api, audit, canonical_timestamp, capture_baseline, pages, pull_request_context, repository_policy, ruleset
 
 
 class GovernanceTest(unittest.TestCase):
     def setUp(self):
         self.contract = {
-            "organization": "example", "code_owner": "owner", "checks_app_id": 15368,
+            "organization": "example", "code_owner": "example/platform-team", "checks_app_id": 15368,
             "defaults": {"checks": ["quality"]},
             "repositories": {"platform": {"checks": ["quality", "plan-required"]}},
         }
         self.live = ruleset(self.contract["repositories"]["platform"], 15368)
         self.live.update(id=7, updated_at="2026-09-26T22:00:00.000Z")
-        self.baseline = {"verified_by": "owner", "rulesets": {"platform": {
+        self.baseline = {"verified_by": "owner", "verified_for": "example/platform-team", "rulesets": {"platform": {
             "ruleset_id": 7, "updated_at": canonical_timestamp(self.live["updated_at"]), "bypass_actors": [],
         }}}
         self.responses = {
             "user": {"login": "owner"},
+            "orgs/example/teams/platform-team/memberships/owner": {"state": "active"},
+            "orgs/example/teams/platform-team/repos?per_page=100&page=1": [
+                {"name": "platform", "permissions": {"push": True}},
+            ],
             "orgs/example/repos?type=all&per_page=100&page=1": [{"name": "platform"}],
             "repos/example/platform": {"visibility": "public", "default_branch": "main", "archived": False},
             "repos/example/platform/rulesets?per_page=100&page=1": [{"name": "main", "id": 7}],
@@ -32,7 +37,7 @@ class GovernanceTest(unittest.TestCase):
                 {"type": item["type"], "ruleset_id": 7} for item in self.live["rules"]
             ],
             "repos/example/platform/contents/.github/CODEOWNERS?ref=main": {
-                "content": base64.b64encode(b"* @owner\n").decode(),
+                "content": base64.b64encode(b"* @example/platform-team\n").decode(),
             },
         }
     def run_audit(self):
@@ -40,6 +45,69 @@ class GovernanceTest(unittest.TestCase):
 
     def test_live_controls_match_policy(self):
         self.assertEqual(self.run_audit()["status"], "pass")
+
+    def test_pr_owner_migration_uses_exact_head_only_for_its_own_repository(self):
+        self.add_repository()
+        baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        prefix = "repos/example/platform/contents/.github/CODEOWNERS?ref="
+        sha = "a" * 40
+        self.responses[prefix + sha] = self.responses[prefix + "main"]
+        self.responses[prefix + "main"] = {"content": base64.b64encode(b"* @previous-owner\n").decode()}
+        report, table = audit(self.contract, self.responses.__getitem__, baseline, ("example/platform", sha))
+        self.assertEqual(report["status"], "pass")
+        self.assertIn("proposed CODEOWNERS `aaaaaaa`", table)
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "fail")
+        self.responses[prefix.replace("/platform/", "/new-project/") + "main"] = self.responses[prefix + "main"]
+        report, _ = audit(self.contract, self.responses.__getitem__, baseline, ("example/platform", sha))
+        self.assertEqual(len(report["findings"]), 1)
+        self.assertTrue(report["findings"][0].startswith("new-project: CODEOWNERS"))
+
+    def test_pr_context_rejects_stale_foreign_and_malformed_events(self):
+        sha = "a" * 40
+        event = {"number": 6, "pull_request": {
+            "head": {"sha": sha}, "base": {"repo": {"full_name": "example/platform"}},
+        }}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "event.json"
+            env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(path),
+                   "GITHUB_REPOSITORY": "example/platform"}
+            current = {"state": "open", "head": {"sha": sha}}
+            def fetch(endpoint):
+                self.assertEqual(endpoint, "repos/example/platform/pulls/6")
+                return current
+            path.write_text(json.dumps(event))
+            self.assertEqual(pull_request_context(env, fetch), ("example/platform", sha))
+            current["head"]["sha"] = "b" * 40
+            with self.assertRaisesRegex(ValueError, "head changed"):
+                pull_request_context(env, fetch)
+            for field, value in (("sha", "main"), ("repo", "other/platform")):
+                changed = copy.deepcopy(event)
+                if field == "sha":
+                    changed["pull_request"]["head"]["sha"] = value
+                else:
+                    changed["pull_request"]["base"]["repo"]["full_name"] = value
+                path.write_text(json.dumps(changed))
+                with self.assertRaisesRegex(ValueError, "Invalid"):
+                    pull_request_context(env, fetch)
+        self.assertIsNone(pull_request_context({"GITHUB_EVENT_NAME": "push"}))
+
+    def test_only_explicit_app_bypass_is_accepted_and_captured(self):
+        actors = [{"actor_id": 123, "actor_type": "Integration", "bypass_mode": "always"}]
+        self.contract["repositories"]["platform"]["bypass_actors"] = actors
+        self.live["bypass_actors"] = copy.deepcopy(actors)
+        baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        self.assertEqual(baseline["rulesets"]["platform"]["bypass_actors"], actors)
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "pass")
+        del self.live["bypass_actors"]
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "pass")
+        self.assertEqual(self.run_audit()["status"], "fail")
+        for changed in ([*actors, {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+                        [{**actors[0], "actor_type": "Team"}],
+                        [{**actors[0], "bypass_mode": "pull_request"}]):
+            self.live["bypass_actors"] = changed
+            self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "fail")
+            with self.assertRaisesRegex(ValueError, "unverified"):
+                capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_read_only_response_uses_only_the_exact_owner_verified_version(self):
         del self.live["bypass_actors"]
@@ -57,7 +125,8 @@ class GovernanceTest(unittest.TestCase):
             canonical_timestamp("2026-09-26T22:00:00")
 
     def test_missing_untrusted_or_recreated_baseline_fails(self):
-        for change in (lambda b: b.update(verified_by="another-user"),
+        for change in (lambda b: b.update(verified_for="example/other-team"),
+                       lambda b: b.pop("verified_by"),
                        lambda b: b.update(rulesets={}),
                        lambda b: b["rulesets"]["platform"].update(ruleset_id=8)):
             baseline = copy.deepcopy(self.baseline)
@@ -71,12 +140,21 @@ class GovernanceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unverified"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
+    def test_capture_rejects_an_owner_team_without_write_access(self):
+        repos = "orgs/example/teams/platform-team/repos?per_page=100&page=1"
+        self.responses[repos] = [{"name": "platform", "permissions": {"push": False, "pull": True}}]
+        with self.assertRaisesRegex(ValueError, "write access"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+        self.responses[repos] = []
+        with self.assertRaisesRegex(ValueError, "write access"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+
     def test_capture_rejects_bypass_actors_and_other_accounts(self):
         self.live["bypass_actors"] = [{"actor_type": "OrganizationAdmin", "bypass_mode": "always"}]
         with self.assertRaisesRegex(ValueError, "unverified"):
             capture_baseline(self.contract, self.responses.__getitem__)
         self.responses["user"] = {"login": "another-user"}
-        with self.assertRaisesRegex(ValueError, "configured owner"):
+        with self.assertRaisesRegex(ValueError, "owner team"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_disabled_untargeted_bypassed_or_weakened_rules_fail(self):
@@ -87,7 +165,7 @@ class GovernanceTest(unittest.TestCase):
             lambda r: r.update(bypass_actors=[{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]),
             lambda r: r["rules"].pop(0),
             lambda r: r["rules"][2]["parameters"].update(required_approving_review_count=0),
-            lambda r: r["rules"][2]["parameters"].update(dismiss_stale_reviews_on_push=False),
+            lambda r: r["rules"][2]["parameters"].update(dismiss_stale_reviews_on_push=True),
             lambda r: r["rules"][2]["parameters"].update(require_code_owner_review=False),
             lambda r: r["rules"][3]["parameters"].update(strict_required_status_checks_policy=False),
             lambda r: r["rules"][3]["parameters"]["required_status_checks"].pop(),
@@ -126,6 +204,9 @@ class GovernanceTest(unittest.TestCase):
         live = ruleset(self.contract["defaults"], 15368)
         live.update(id=7, updated_at=self.live["updated_at"])
         self.responses["repos/example/new-project/rulesets/7"] = live
+        self.responses["orgs/example/teams/platform-team/repos?per_page=100&page=1"].append(
+            {"name": "new-project", "permissions": {"push": True}}
+        )
 
     def test_new_repository_uses_defaults_and_appears_in_report_without_inventory_edit(self):
         self.add_repository()
@@ -194,7 +275,12 @@ class GovernanceTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         contract = json.loads((root / "governance/repositories.json").read_text())
         self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
-        self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertIn("infrastructure-plan-required", repository_policy(contract, "ops-shared")["checks"])
+        self.assertNotIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertEqual(repository_policy(contract, ".github")["bypass_actors"],
+                         [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}])
+        for name in ("new-project", "terraform-modules", "ops-shared", "engineering-standards", "engineering-acceptance"):
+            self.assertEqual(ruleset(repository_policy(contract, name), 15368)["bypass_actors"], [])
 
 
 if __name__ == "__main__":

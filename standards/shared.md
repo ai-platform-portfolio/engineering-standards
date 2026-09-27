@@ -13,12 +13,32 @@
 - Before proposing a manual exception, identify why CI cannot execute it, the minimum necessary action, affected resources, rollback and how normal CI deployment will resume. Obtain explicit approval for that exception and the specific command; reconcile the resulting configuration and state with the infrastructure code and record the evidence.
 - Read-only local inspection, validation and planning remain allowed. A local saved plan is review evidence, not authorization or a reason to apply locally. Existing per-command approval requirements also apply to CI triggers that start deployment.
 
+## Application packaging
+
+- Prefer Docker images where the selected hosting service supports them. Use a supported alternative when service constraints justify it, such as ZIP packages for Azure Functions Flex Consumption. Record the constraint and chosen format; do not change hosting or network topology solely to satisfy this preference.
+- Build and test the chosen artifact in CI and publish it through the reviewed deployment workflow. Pin container deployments by digest and package sources by immutable revision with locked dependencies. Verify the running application and its intended outcome after deployment; a successful build or upload is not deployment evidence.
+- Pre-merge checks must reject incompatible hosting/artifact combinations and mutable deployment references. Include deliberately invalid combinations and supported non-container cases in acceptance tests. Identify the consuming workflow and active required check before calling the rule enforced; Docker preference alone must not reject a supported ZIP deployment.
+
 ## Pre-merge deployment validation
 
 - Feature-branch PRs must exercise the real infrastructure plan path before merge: backend initialization, provider authentication, refresh and planning. Static validation alone is insufficient. Main re-plans for drift and gates apply; it must not be the first execution test of the planning path.
 - Validate workflow YAML and embedded shell on every PR, with Actionlint and ShellCheck enabled. Missing tools or skipped shell analysis must fail the check. Keep a deliberately broken workflow as an acceptance test that proves the gate catches shell syntax errors.
 - Require workflow validation and a successful plan for the current PR revision in active repository rules. A missing, skipped or failed required validation must not be presented as merge-ready. Verify the rules are active before claiming enforcement.
 - Publish a commit-labelled, collapsible PR plan result, updating the existing bot comment. Redact secrets and environment identifiers before publishing; never upload raw state or saved plans. A PR plan is a preview, not permission to apply.
+
+## Webhook security
+
+- Authenticate webhook deliveries over HTTPS before processing, queueing or triggering downstream work. Reject missing, invalid or unavailable authentication; a public endpoint or unguessable URL is not authentication.
+- Prefer the provider's supported signing mechanism. HMAC-SHA256 over the exact signed bytes with constant-time comparison is recommended where supported, not mandatory for every provider. Follow its actual protocol, including signed timestamps when available; never invent headers the sender does not supply.
+- When signing is unsupported, document the provider limitation and supported alternative authentication, compensating controls, residual risk and owner acceptance. Prefer authenticated headers, validated tokens or mTLS where supported. A query-string secret requires an explicit exception, rotation and URL/log redaction; IP restrictions alone do not prove payload authenticity. Network changes retain their existing approval gate.
+- Keep credentials in a secret store, bound request sizes, validate payloads, and make retries safe. Implement replay/deduplication controls appropriate to the sender and side effects; a valid signature or timestamp window alone does not prevent duplicate processing. Never log secrets, authentication headers or sensitive payloads.
+- Prove rejection of missing/invalid authentication, tampered payloads where signatures are supported, and safe duplicate/replayed deliveries. After CI deployment, verify the real endpoint and downstream outcome before declaring completion; a green build or deployment alone is insufficient.
+
+## Infrastructure documentation
+
+- Before adding or changing Terraform/OpenTofu configuration, consult current official provider and cloud-service documentation. Check the provider version in the lock file and the engine version used by CI; confirm that proposed arguments, authentication and deployment methods are supported by those versions. Do not rely only on remembered examples or automatically upgrade to latest.
+- Record the relevant documentation URLs, versions checked, configuration decisions and validation evidence in the PR or linked design. Identify deprecated fields and prefer supported replacements where compatible; provider upgrades require their own reviewed compatibility assessment.
+- Validate against the locked provider schema locally and run the real PR plan before merge. Record missing access or unavailable documentation as an explicit verification gap; never claim a live lookup or successful plan that did not happen.
 
 ## Decisions reserved for the user
 

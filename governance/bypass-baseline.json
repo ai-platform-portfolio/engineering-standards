@@ -1,24 +1,24 @@
 {
-  "verified_by": "michaela-links",
+  "verified_by": "michaelalinks",
   "rulesets": {
     "engineering-standards": {
       "ruleset_id": 24053929,
-      "updated_at": "2026-09-26T22:16:16.050000+00:00",
+      "updated_at": "2026-09-27T13:11:32.550000+00:00",
       "bypass_actors": []
     },
     "engineering-acceptance": {
       "ruleset_id": 24053931,
-      "updated_at": "2026-09-26T22:16:20.089000+00:00",
+      "updated_at": "2026-09-27T13:11:35.952000+00:00",
       "bypass_actors": []
     },
     "terraform-modules": {
       "ruleset_id": 24046262,
-      "updated_at": "2026-09-26T22:09:11.898000+00:00",
+      "updated_at": "2026-09-27T13:11:34.236000+00:00",
       "bypass_actors": []
     },
     "ops-shared": {
       "ruleset_id": 24069230,
-      "updated_at": "2026-09-27T08:19:31.030000+00:00",
+      "updated_at": "2026-09-27T13:11:37.649000+00:00",
       "bypass_actors": []
     }
   }

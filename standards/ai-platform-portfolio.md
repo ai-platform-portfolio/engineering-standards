@@ -4,6 +4,47 @@ Scope: repositories owned by `ai-platform-portfolio` only. This document is not
 part of the shared installer, consumer policies, or requirements distributed with
 modules. Downstream repositories do not inherit it.
 
+## Owner identity
+
+Ownership is the `ai-platform-portfolio/platform` team. Never write an individual
+account into tracked configuration as a code owner, required deployment reviewer,
+policy-exception owner, governance-policy owner or default owner: name the team.
+An account that leaves takes its name with it, and a reference nothing resolves
+grants no review. The active CLI account does not determine ownership. This rule
+applies only to `ai-platform-portfolio`; do not distribute it downstream.
+
+A code-owner team must hold write access on every repository that names it. GitHub
+ignores a team that does not, assigning no code owner and reporting no error, so
+the governance capture verifies that access rather than assuming it.
+
+Membership is what lets one account author while another approves. Do not weaken
+review requirements to allow self-approval.
+
+Attestation records remain individual: `verified_by` names the person who captured
+the evidence, and is written by the capture rather than configured. Never relabel
+historical verification or authorship as another user.
+
+## Organisation app
+
+`ai-platform-portfolio-ops`, app ID `5094588`, is this organisation's own GitHub
+App, installed across all repositories. It is the identity for automation that
+the default Actions token cannot perform, and it is the `Integration` bypass actor
+the governance contract permits on `.github` so catalogue sync can update the
+profile. Any other bypass actor is drift and fails the audit.
+
+Use it, rather than a personal access token, wherever automation needs more than
+the repository-scoped Actions token. Mint a short-lived installation token at the
+point of use; never commit one, and never widen its permissions to suit a single
+job. Its private key stays in organisation secrets.
+
+Resolving the owner team to its members needs `Members: read`, an organisation
+permission the app does not currently hold. Until it is added and the installation
+accepts it, team membership cannot be expanded from CI, and anything that depends
+on expanding it is blocked rather than approximated.
+
+The `linear-code` installation is a third-party integration. It is not an identity
+for this organisation's automation, whatever permissions it happens to carry.
+
 ## Pull requests
 
 - This is a portfolio organisation with one human owner. Open regular pull
@@ -13,6 +54,40 @@ modules. Downstream repositories do not inherit it.
   PR is not a claim that checks have passed or that it is ready to merge.
 - Existing review requirements and per-command infrastructure approval gates
   still apply. Being the sole owner does not waive them.
+- Keep `dismiss_stale_reviews_on_push` disabled in this org's branch rules.
+  New commits retain existing PR approvals; required checks still validate the
+  latest revision. This preference does not change deployment approvals or the
+  separate current-commit approval required for protected policy changes.
+
+## Terraform repository boundaries
+
+`terraform-modules` is a library for reusable modules, examples and tests. Do not
+put live deployment roots, environment configuration, state backends or deployment
+pipelines there unless the owner explicitly requests that specific exception.
+The availability of modules is not permission to deploy from their repository.
+
+Implementation repositories call immutable module revisions. Central org
+infrastructure and Function publishing belong in `ops-shared`, with Terraform
+configuration under `ops-shared/ci`. This supersedes the earlier `terraform-modules/ci`
+exception; do not carry that exception forward. Module validation must stay
+backend-free and must not apply live resources. These boundaries are org-specific.
+
+## Workflow triggers and deployment approval
+
+For this org, do not add `workflow_dispatch` unless the owner explicitly requests
+a manual trigger. Read-only checks, builds and plans run automatically on the
+appropriate PR, push, schedule or authenticated event. Deployment workflows start
+automatically after relevant changes merge to main; resource-changing jobs wait
+for approval in the protected deployment environment.
+
+A manual workflow launch is not the approval gate. Configure and verify the
+environment's required owner, main-only deployment and disabled administrator
+bypass before enabling deployment. Apply infrastructure and federation before
+publishing application code that depends on them. The agent's per-command approval
+requirements still apply when it initiates an apply or deployment.
+
+This replaces the manual-dispatch default used for Function publishing. It is
+org-specific and is not installed in downstream consumers or reusable defaults.
 
 ## Track outcomes through completion
 
@@ -67,4 +142,40 @@ must still fail, with findings naming the affected repository and control.
 Publish the discovered catalogue and findings in the audit run summary and report.
 Link to that evidence instead of maintaining a static table claiming compliance.
 Discovery is read-only: provisioning protections and refreshing the owner-verified
-no-bypass baseline remain separate, reviewed operations.
+ruleset baseline remain separate, reviewed operations. The only permitted bypass
+is the `ai-platform-portfolio-ops` GitHub App in `.github` for automated profile
+updates; other repositories and human accounts retain no bypass. This replaces
+the former blanket no-bypass requirement with that explicit repository exception.
+
+For PR audits, validate the calling repository's proposed CODEOWNERS at the exact
+current PR head and label it as proposed in the report. Continue checking other
+repositories and all live protections normally. Main and scheduled audits must
+verify ownership on main everywhere; migrations cannot create audit exemptions.
+
+## Optional automatic federation onboarding
+
+This org opts in through `ops-shared/ci/onboarding.json`; absent or disabled
+configuration does not enroll repositories. Do not install this preference in
+downstream projects or couple cloud access to local branch-hook installation.
+
+Every discovered public org repository receives a desired `central-apply`
+federation entry, even before it needs Azure. Use verified immutable org/repository
+IDs and the existing CI identity. Add planning trust only for repositories that
+actually plan infrastructure; preserve existing credential addresses.
+
+Authenticated repository webhooks request an infrastructure plan. CI resolves the
+inventory for PR, main and approved apply plans; changed inventory invalidates the
+reviewed fingerprint. API errors, mismatched IDs and credential-capacity overflow
+must fail rather than silently omit repositories. The webhook cannot invoke apply;
+Azure writes retain the owner's protected CI approval and per-command gate.
+
+Before publishing application code, require the named owner and main-only
+deployment environment, verify actual OIDC claims against the declared repository
+trust, and complete Azure login before deployment. Required CI must exercise
+disabled onboarding, new-repository inclusion, invalid metadata and missing/wrong
+authentication cases. Record the real plan, approval and successful token exchange;
+declaring a credential does not prove it exists or works in Azure.
+
+The automatic entries inherit this sandbox CI identity's existing permissions.
+This opt-in is not a least-privilege workload identity policy. New repositories
+still need protected environments and explicit secret access before deployment.

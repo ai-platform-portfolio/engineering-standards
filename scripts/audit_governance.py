@@ -5,6 +5,7 @@ import base64
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -45,14 +46,14 @@ def ruleset(spec, app_id):
         "name": "main",
         "target": "branch",
         "enforcement": "active",
-        "bypass_actors": [],
+        "bypass_actors": spec.get("bypass_actors", []),
         "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
         "rules": [
             {"type": "deletion"},
             {"type": "non_fast_forward"},
             {"type": "pull_request", "parameters": {
                 "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": True,
+                "dismiss_stale_reviews_on_push": False,
                 "require_code_owner_review": True,
                 "require_last_push_approval": False,
                 "required_review_thread_resolution": True,
@@ -94,7 +95,7 @@ def differences(actual, expected, path="ruleset"):
         if not isinstance(actual, list):
             return [f"{path}: missing list"]
         if expected and isinstance(expected[0], dict):
-            identity = "type" if "type" in expected[0] else "context"
+            identity = next(key for key in ("type", "context", "actor_id") if key in expected[0])
             findings = []
             if len(actual) != len(expected):
                 findings.append(f"{path}: expected {len(expected)} entries, found {len(actual)}")
@@ -121,13 +122,44 @@ def canonical_timestamp(value):
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
+def owner_team(contract):
+    org, _, slug = contract["code_owner"].partition("/")
+    if not slug or org != contract["organization"]:
+        raise ValueError("code_owner must name a team as <organisation>/<team-slug>")
+    return slug
+
+
+def team_member(contract, login, fetch=api):
+    path = f"orgs/{contract['organization']}/teams/{owner_team(contract)}/memberships/{login}"
+    try:
+        return fetch(path).get("state") == "active"
+    except (RuntimeError, ValueError, KeyError, TypeError):
+        return False
+
+
+def team_writes(contract, fetch=api):
+    """GitHub ignores a code-owner team that lacks write access, without reporting it.
+
+    Listed rather than checked per repository: the single-repository permission
+    endpoint answers 204 with no body, which carries no permission to read.
+    """
+    path = f"orgs/{contract['organization']}/teams/{owner_team(contract)}/repos"
+    return {
+        item["name"] for item in pages(path, fetch)
+        if item.get("permissions", {}).get("push") is True
+    }
+
+
 def capture_baseline(contract, fetch=api):
     owner = fetch("user")["login"]
-    if owner != contract["code_owner"]:
-        raise ValueError("Capture requires the configured owner's authenticated account")
-    baseline = {"verified_by": owner, "rulesets": {}}
+    if not team_member(contract, owner, fetch):
+        raise ValueError("Capture requires an active member of the configured owner team")
+    baseline = {"verified_by": owner, "verified_for": contract["code_owner"], "rulesets": {}}
+    writable = team_writes(contract, fetch)
     for name, spec in repositories(contract, fetch).items():
         prefix = f"repos/{contract['organization']}/{name}"
+        if name not in writable:
+            raise ValueError(f"{name}: the owner team needs write access to be a code owner")
         matches = [item for item in pages(f"{prefix}/rulesets", fetch) if item["name"] == "main"]
         if len(matches) != 1:
             raise ValueError(f"{name}: expected exactly one main ruleset before capture")
@@ -138,12 +170,13 @@ def capture_baseline(contract, fetch=api):
         if not live.get("updated_at"):
             raise ValueError(f"{name}: ruleset update timestamp is missing")
         baseline["rulesets"][name] = {
-            "ruleset_id": live["id"], "updated_at": canonical_timestamp(live["updated_at"]), "bypass_actors": [],
+            "ruleset_id": live["id"], "updated_at": canonical_timestamp(live["updated_at"]),
+            "bypass_actors": live["bypass_actors"],
         }
     return baseline
 
 
-def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
+def inspect_repository(org, name, spec, contract, fetch=api, baseline=None, owners_ref="main"):
     prefix = f"repos/{org}/{name}"
     info = fetch(prefix)
     findings = []
@@ -160,11 +193,12 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         baseline = baseline or {}
         captured = baseline.get("rulesets", {}).get(name)
         expected_capture = {
-            "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")), "bypass_actors": [],
+            "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")),
+            "bypass_actors": spec.get("bypass_actors", []),
         }
-        if (baseline.get("verified_by") != contract["code_owner"] or not live.get("updated_at")
-                or captured != expected_capture):
-            findings.append("ruleset version lacks a matching owner-verified no-bypass baseline")
+        if (baseline.get("verified_for") != contract["code_owner"] or not baseline.get("verified_by")
+                or not live.get("updated_at") or captured != expected_capture):
+            findings.append("ruleset version lacks a matching owner-verified baseline")
         visible = dict(live)
         if "bypass_actors" not in visible and captured == expected_capture:
             visible["bypass_actors"] = captured["bypass_actors"]
@@ -177,7 +211,7 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         if not required_types.issubset(effective_types):
             findings.append("the main ruleset is not effective on main")
     try:
-        owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
+        owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref={owners_ref}")
         owners = base64.b64decode(owners_file["content"]).decode()
         lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
         if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
@@ -189,6 +223,7 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         "visibility": info.get("visibility", "unknown"),
         "branch": info.get("default_branch", "unknown"),
         "checks": spec["checks"],
+        "owners_ref": owners_ref,
         "findings": findings,
     }
 
@@ -199,17 +234,37 @@ def render(rows):
     for row in rows:
         checks = ", ".join(f"`{name}`" for name in row["checks"])
         state = "drift detected" if row["findings"] else "enforced"
+        if row.get("owners_ref", "main") != "main":
+            state += f"; proposed CODEOWNERS `{row['owners_ref'][:7]}`"
         lines.append(f"| `{row['repository']}` | {row['visibility']} | `{row['branch']}` | {state} | {checks} |")
     return "\n".join([*lines, END])
 
 
-def audit(contract, fetch=api, baseline=None):
+def pull_request_context(environ, fetch=api):
+    """Use only the current PR head, and only for the calling repository."""
+    if environ.get("GITHUB_EVENT_NAME") != "pull_request":
+        return None
+    event = json.loads(Path(environ["GITHUB_EVENT_PATH"]).read_text())
+    repo = environ["GITHUB_REPOSITORY"]
+    pr = event["pull_request"]
+    sha = pr["head"]["sha"]
+    if (pr["base"]["repo"]["full_name"] != repo
+            or not re.fullmatch(r"[0-9a-f]{40}", sha)):
+        raise ValueError("Invalid pull request audit context")
+    current = fetch(f"repos/{repo}/pulls/{int(event['number'])}")
+    if current["state"] != "open" or current["head"]["sha"] != sha:
+        raise ValueError("Pull request head changed; rerun governance on the current commit")
+    return repo, sha
+
+
+def audit(contract, fetch=api, baseline=None, proposed_owners=None):
     org = contract["organization"]
     findings = []
     rows = []
     for name, spec in repositories(contract, fetch).items():
         try:
-            row = inspect_repository(org, name, spec, contract, fetch, baseline)
+            ref = proposed_owners[1] if proposed_owners and proposed_owners[0] == f"{org}/{name}" else "main"
+            row = inspect_repository(org, name, spec, contract, fetch, baseline, ref)
         except (RuntimeError, ValueError, KeyError, TypeError) as error:
             row = {"repository": name, "visibility": "unknown", "branch": "unknown",
                    "checks": spec["checks"], "findings": [str(error)]}
@@ -225,7 +280,7 @@ def main():
     parser.add_argument("--report", type=Path, default=ROOT / "reports/governance.json")
     parser.add_argument("--baseline", type=Path, default=ROOT / "governance/bypass-baseline.json")
     parser.add_argument("--ruleset", help="Print desired ruleset JSON for one repository; does not write to GitHub")
-    parser.add_argument("--capture-baseline", action="store_true", help="Read the full configuration as owner and print a proposed no-bypass baseline; never updates GitHub")
+    parser.add_argument("--capture-baseline", action="store_true", help="Read the full configuration as owner and print a proposed ruleset baseline; never updates GitHub")
     args = parser.parse_args()
     contract = json.loads(args.contract.read_text())
     if args.ruleset:
@@ -239,7 +294,8 @@ def main():
             print(str(error), file=sys.stderr)
             return 2
     try:
-        report, block = audit(contract, baseline=json.loads(args.baseline.read_text()))
+        report, block = audit(contract, baseline=json.loads(args.baseline.read_text()),
+                              proposed_owners=pull_request_context(os.environ))
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
         report, block = {"status": "error", "findings": [str(error)], "repositories": []}, ""
     args.report.parent.mkdir(parents=True, exist_ok=True)

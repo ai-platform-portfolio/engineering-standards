@@ -23,6 +23,7 @@ class PolicyAdoption(unittest.TestCase):
         self.git("init", "-q")
         (self.root / ".github").mkdir()
         (self.root / "ci").mkdir()
+        self.requested = []
         self.write(".github/CODEOWNERS", "* @trusted\n")
         self.policy = {
             "version": 1,
@@ -67,7 +68,8 @@ class PolicyAdoption(unittest.TestCase):
         self.git("update-ref", "HEAD", sha)
         return sha
 
-    def run_check(self, reviews, *, author="author", head=None, error=False, policy_file=None):
+    def run_check(self, reviews, *, author="author", head=None, error=False, policy_file=None,
+                  members=None):
         pull = {
             "state": "open",
             "head": {"sha": head or self.head},
@@ -75,9 +77,12 @@ class PolicyAdoption(unittest.TestCase):
             "user": {"login": author},
         }
 
-        def api(repository, path):
+        def api(path):
             if error:
                 raise OSError("API unavailable")
+            if "/members?" in path:
+                self.requested.append(path)
+                return [{"login": name, "type": "User"} for name in (members or [])]
             return reviews if "/reviews?" in path else pull
 
         argv = [
@@ -160,3 +165,43 @@ class PolicyAdoption(unittest.TestCase):
     def test_policy_path_cannot_escape_checkout(self):
         for path in ("../policy.yml", "/tmp/policy.yml", "-policy.yml"):
             self.assertEqual(self.run_check([], policy_file=path)[0], 2)
+
+    def rebase_owners(self, rule):
+        self.git("reset", "--hard", self.base)
+        self.write(".github/CODEOWNERS", rule)
+        self.base = self.commit(self.base)
+        self.write(".github/workflow.yml", "name: changed\n")
+        self.head = self.commit(self.base)
+
+    def test_a_team_owner_is_expanded_to_its_members(self):
+        self.rebase_owners("* @example/platform\n")
+        code, report = self.run_check([self.review(owner="member")], members=["member", "other"])
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["policy_adoption"]["owner"], "member")
+        self.assertEqual(self.requested, ["orgs/example/teams/platform/members?per_page=100&page=1"])
+        self.assertEqual(
+            self.run_check([self.review(owner="stranger")], members=["member"])[0], 1
+        )
+        self.assertEqual(self.run_check([self.review(owner="member")], members=[])[0], 1)
+
+    def test_a_team_member_cannot_approve_their_own_pull_request(self):
+        self.rebase_owners("* @example/platform\n")
+        code, _ = self.run_check(
+            [self.review(owner="member")], author="member", members=["member", "other"]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            self.run_check(
+                [self.review(owner="other")], author="member", members=["member", "other"]
+            )[0],
+            0,
+        )
+
+    def test_unreadable_team_membership_fails_closed(self):
+        self.rebase_owners("* @example/platform\n")
+        self.assertEqual(self.run_check([self.review(owner="member")], error=True)[0], 2)
+
+    def test_malformed_codeowners_entries_are_rejected(self):
+        for rule in ("* example/platform\n", "* @example/platform/extra\n", "* @\n"):
+            self.rebase_owners(rule)
+            self.assertEqual(self.run_check([self.review()], members=["member"])[0], 2, rule)
