@@ -24,6 +24,27 @@ Attestation records remain individual: `verified_by` names the person who captur
 the evidence, and is written by the capture rather than configured. Never relabel
 historical verification or authorship as another user.
 
+## Organisation app
+
+`ai-platform-portfolio-ops`, app ID `5094588`, is this organisation's own GitHub
+App, installed across all repositories. It is the identity for automation that
+the default Actions token cannot perform, and it is the `Integration` bypass actor
+the governance contract permits on `.github` so catalogue sync can update the
+profile. Any other bypass actor is drift and fails the audit.
+
+Use it, rather than a personal access token, wherever automation needs more than
+the repository-scoped Actions token. Mint a short-lived installation token at the
+point of use; never commit one, and never widen its permissions to suit a single
+job. Its private key stays in organisation secrets.
+
+Resolving the owner team to its members needs `Members: read`, an organisation
+permission the app does not currently hold. Until it is added and the installation
+accepts it, team membership cannot be expanded from CI, and anything that depends
+on expanding it is blocked rather than approximated.
+
+The `linear-code` installation is a third-party integration. It is not an identity
+for this organisation's automation, whatever permissions it happens to carry.
+
 ## Pull requests
 
 - This is a portfolio organisation with one human owner. Open regular pull
