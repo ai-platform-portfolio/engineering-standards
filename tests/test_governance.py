@@ -14,17 +14,19 @@ from audit_governance import api, audit, canonical_timestamp, capture_baseline, 
 class GovernanceTest(unittest.TestCase):
     def setUp(self):
         self.contract = {
-            "organization": "example", "code_owner": "owner", "checks_app_id": 15368,
+            "organization": "example", "code_owner": "example/platform-team", "checks_app_id": 15368,
             "defaults": {"checks": ["quality"]},
             "repositories": {"platform": {"checks": ["quality", "plan-required"]}},
         }
         self.live = ruleset(self.contract["repositories"]["platform"], 15368)
         self.live.update(id=7, updated_at="2026-09-26T22:00:00.000Z")
-        self.baseline = {"verified_by": "owner", "rulesets": {"platform": {
+        self.baseline = {"verified_by": "owner", "verified_for": "example/platform-team", "rulesets": {"platform": {
             "ruleset_id": 7, "updated_at": canonical_timestamp(self.live["updated_at"]), "bypass_actors": [],
         }}}
         self.responses = {
             "user": {"login": "owner"},
+            "orgs/example/teams/platform-team/memberships/owner": {"state": "active"},
+            "orgs/example/teams/platform-team/repos/example/platform": {"permissions": {"push": True}},
             "orgs/example/repos?type=all&per_page=100&page=1": [{"name": "platform"}],
             "repos/example/platform": {"visibility": "public", "default_branch": "main", "archived": False},
             "repos/example/platform/rulesets?per_page=100&page=1": [{"name": "main", "id": 7}],
@@ -33,7 +35,7 @@ class GovernanceTest(unittest.TestCase):
                 {"type": item["type"], "ruleset_id": 7} for item in self.live["rules"]
             ],
             "repos/example/platform/contents/.github/CODEOWNERS?ref=main": {
-                "content": base64.b64encode(b"* @owner\n").decode(),
+                "content": base64.b64encode(b"* @example/platform-team\n").decode(),
             },
         }
     def run_audit(self):
@@ -121,7 +123,8 @@ class GovernanceTest(unittest.TestCase):
             canonical_timestamp("2026-09-26T22:00:00")
 
     def test_missing_untrusted_or_recreated_baseline_fails(self):
-        for change in (lambda b: b.update(verified_by="another-user"),
+        for change in (lambda b: b.update(verified_for="example/other-team"),
+                       lambda b: b.pop("verified_by"),
                        lambda b: b.update(rulesets={}),
                        lambda b: b["rulesets"]["platform"].update(ruleset_id=8)):
             baseline = copy.deepcopy(self.baseline)
@@ -135,12 +138,21 @@ class GovernanceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unverified"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
+    def test_capture_rejects_an_owner_team_without_write_access(self):
+        repos = "orgs/example/teams/platform-team/repos/example/platform"
+        self.responses[repos] = {"permissions": {"push": False, "pull": True}}
+        with self.assertRaisesRegex(ValueError, "write access"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+        del self.responses[repos]
+        with self.assertRaisesRegex(ValueError, "write access"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+
     def test_capture_rejects_bypass_actors_and_other_accounts(self):
         self.live["bypass_actors"] = [{"actor_type": "OrganizationAdmin", "bypass_mode": "always"}]
         with self.assertRaisesRegex(ValueError, "unverified"):
             capture_baseline(self.contract, self.responses.__getitem__)
         self.responses["user"] = {"login": "another-user"}
-        with self.assertRaisesRegex(ValueError, "configured owner"):
+        with self.assertRaisesRegex(ValueError, "owner team"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_disabled_untargeted_bypassed_or_weakened_rules_fail(self):
@@ -190,6 +202,9 @@ class GovernanceTest(unittest.TestCase):
         live = ruleset(self.contract["defaults"], 15368)
         live.update(id=7, updated_at=self.live["updated_at"])
         self.responses["repos/example/new-project/rulesets/7"] = live
+        self.responses["orgs/example/teams/platform-team/repos/example/new-project"] = {
+            "permissions": {"push": True},
+        }
 
     def test_new_repository_uses_defaults_and_appears_in_report_without_inventory_edit(self):
         self.add_repository()

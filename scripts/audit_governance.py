@@ -122,13 +122,40 @@ def canonical_timestamp(value):
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
+def owner_team(contract):
+    org, _, slug = contract["code_owner"].partition("/")
+    if not slug or org != contract["organization"]:
+        raise ValueError("code_owner must name a team as <organisation>/<team-slug>")
+    return slug
+
+
+def team_member(contract, login, fetch=api):
+    path = f"orgs/{contract['organization']}/teams/{owner_team(contract)}/memberships/{login}"
+    try:
+        return fetch(path).get("state") == "active"
+    except (RuntimeError, ValueError, KeyError, TypeError):
+        return False
+
+
+def team_writes(contract, repository, fetch=api):
+    """GitHub ignores a code-owner team that lacks write access, without reporting it."""
+    org = contract["organization"]
+    path = f"orgs/{org}/teams/{owner_team(contract)}/repos/{org}/{repository}"
+    try:
+        return fetch(path).get("permissions", {}).get("push") is True
+    except (RuntimeError, ValueError, KeyError, TypeError):
+        return False
+
+
 def capture_baseline(contract, fetch=api):
     owner = fetch("user")["login"]
-    if owner != contract["code_owner"]:
-        raise ValueError("Capture requires the configured owner's authenticated account")
-    baseline = {"verified_by": owner, "rulesets": {}}
+    if not team_member(contract, owner, fetch):
+        raise ValueError("Capture requires an active member of the configured owner team")
+    baseline = {"verified_by": owner, "verified_for": contract["code_owner"], "rulesets": {}}
     for name, spec in repositories(contract, fetch).items():
         prefix = f"repos/{contract['organization']}/{name}"
+        if not team_writes(contract, name, fetch):
+            raise ValueError(f"{name}: the owner team needs write access to be a code owner")
         matches = [item for item in pages(f"{prefix}/rulesets", fetch) if item["name"] == "main"]
         if len(matches) != 1:
             raise ValueError(f"{name}: expected exactly one main ruleset before capture")
@@ -165,8 +192,8 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None, owne
             "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")),
             "bypass_actors": spec.get("bypass_actors", []),
         }
-        if (baseline.get("verified_by") != contract["code_owner"] or not live.get("updated_at")
-                or captured != expected_capture):
+        if (baseline.get("verified_for") != contract["code_owner"] or not baseline.get("verified_by")
+                or not live.get("updated_at") or captured != expected_capture):
             findings.append("ruleset version lacks a matching owner-verified baseline")
         visible = dict(live)
         if "bypass_actors" not in visible and captured == expected_capture:

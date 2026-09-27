@@ -6,16 +6,23 @@ modules. Downstream repositories do not inherit it.
 
 ## Owner identity
 
-Use `michaelalinks` as the owner for this organisation. Never assign
-`michaela-links` as a code owner, required deployment reviewer, policy-exception
-owner, governance-policy owner or default owner in org configuration or tooling.
-The active CLI account does not determine ownership. This rule applies only to
-`ai-platform-portfolio`; do not distribute this account choice downstream.
+Ownership is the `ai-platform-portfolio/platform` team. Never write an individual
+account into tracked configuration as a code owner, required deployment reviewer,
+policy-exception owner, governance-policy owner or default owner: name the team.
+An account that leaves takes its name with it, and a reference nothing resolves
+grants no review. The active CLI account does not determine ownership. This rule
+applies only to `ai-platform-portfolio`; do not distribute it downstream.
 
-Use a separate authorised account or app to author PRs that require approval from
-`michaelalinks`; do not weaken review requirements to allow self-approval. Migrate
-existing assignments explicitly and recapture governance evidence as the correct
-account. Never relabel historical verification or authorship as another user.
+A code-owner team must hold write access on every repository that names it. GitHub
+ignores a team that does not, assigning no code owner and reporting no error, so
+the governance capture verifies that access rather than assuming it.
+
+Membership is what lets one account author while another approves. Do not weaken
+review requirements to allow self-approval.
+
+Attestation records remain individual: `verified_by` names the person who captured
+the evidence, and is written by the capture rather than configured. Never relabel
+historical verification or authorship as another user.
 
 ## Pull requests
 
