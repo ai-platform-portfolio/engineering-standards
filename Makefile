@@ -43,6 +43,20 @@ portfolio-verify:
 
 test:
 	@$(PYTHON) -m unittest discover -s tests -p test_reconcile.py -v
+	@$(PYTHON) -m unittest discover -s tests -p test_linear_hook.py -v
+	@$(PYTHON) -m unittest discover -s tests -p test_linear_workspace.py -v
+
+.PHONY: hooks-install hooks-refresh hooks-status hooks-uninstall
+WORKSPACE ?= $(error Set WORKSPACE to your repository directory)
+HOOK_POLICY ?= policies/portfolio-linear.json
+hooks-install:
+	$(PYTHON) scripts/linear_workspace.py install "$(WORKSPACE)" $(if $(SNAPSHOT),--snapshot "$(SNAPSHOT)",) --policy "$(HOOK_POLICY)"
+hooks-refresh:
+	$(PYTHON) scripts/linear_workspace.py refresh "$(WORKSPACE)"
+hooks-status:
+	$(PYTHON) scripts/linear_workspace.py status "$(WORKSPACE)"
+hooks-uninstall:
+	$(PYTHON) scripts/linear_workspace.py remove "$(WORKSPACE)"
 
 .PHONY: tools check
 tools:

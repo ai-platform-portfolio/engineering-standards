@@ -38,6 +38,25 @@ exposing secrets. Until all requested outcomes are evidenced, work is incomplete
 This is an org delivery rule, not an automated proof of semantic completeness.
 Acceptance tests enforce the outcomes they cover; the owner reviews coverage.
 
+## Linear and local branch checks
+
+Use the [Org Governance project](https://linear.app/ai-platform-portfolio/project/org-governance-c9012ab30f01)
+as the durable record for this organisation's governance requests. Read the active
+issue before work, preserve remaining requirements across sessions, and link PRs
+and verification evidence before marking it complete. A merged PR alone does not
+close an outcome requiring deployment or live verification.
+
+The owner chose optional, soft Linear checks for branches and worktrees. They
+warn rather than block; they are not tamper-proof or a new remote merge gate.
+Developers choose their workspace paths and authenticate individually. Installation
+must preserve existing hooks and remain reversible. Scope by GitHub organisation,
+keep policy separate from local settings, and install reviewed versions explicitly.
+See [installation, refresh, limitations and removal](../docs/linear-hooks.md).
+
+This extends the existing org-only completion rule with its Linear record and
+adds an opt-in local check. It does not weaken owner approvals, required CI or
+existing hooks, and introduces no downstream requirement.
+
 ## Repository governance
 
 Discover organisation repositories from GitHub and audit each against the default
