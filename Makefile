@@ -43,6 +43,7 @@ portfolio-verify:
 
 test:
 	@$(PYTHON) -m unittest discover -s tests -p test_reconcile.py -v
+	@$(PYTHON) -m unittest discover -s tests -p test_linear_hook.py -v
 
 .PHONY: tools check
 tools:
