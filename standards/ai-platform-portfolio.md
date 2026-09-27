@@ -68,3 +68,31 @@ Publish the discovered catalogue and findings in the audit run summary and repor
 Link to that evidence instead of maintaining a static table claiming compliance.
 Discovery is read-only: provisioning protections and refreshing the owner-verified
 no-bypass baseline remain separate, reviewed operations.
+
+## Optional automatic federation onboarding
+
+This org opts in through `terraform-modules/ci/onboarding.json`; absent or disabled
+configuration does not enroll repositories. Do not install this preference in
+downstream projects or couple cloud access to local branch-hook installation.
+
+Every discovered public org repository receives a desired `central-apply`
+federation entry, even before it needs Azure. Use verified immutable org/repository
+IDs and the existing CI identity. Add planning trust only for repositories that
+actually plan infrastructure; preserve existing credential addresses.
+
+Authenticated repository webhooks request an infrastructure plan. CI resolves the
+inventory for PR, main and approved apply plans; changed inventory invalidates the
+reviewed fingerprint. API errors, mismatched IDs and credential-capacity overflow
+must fail rather than silently omit repositories. The webhook cannot invoke apply;
+Azure writes retain the owner's protected CI approval and per-command gate.
+
+Before publishing application code, require the named owner and main-only
+deployment environment, verify actual OIDC claims against the declared repository
+trust, and complete Azure login before deployment. Required CI must exercise
+disabled onboarding, new-repository inclusion, invalid metadata and missing/wrong
+authentication cases. Record the real plan, approval and successful token exchange;
+declaring a credential does not prove it exists or works in Azure.
+
+The automatic entries inherit this sandbox CI identity's existing permissions.
+This opt-in is not a least-privilege workload identity policy. New repositories
+still need protected environments and explicit secret access before deployment.
