@@ -3,11 +3,12 @@ import copy
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from audit_governance import api, audit, canonical_timestamp, capture_baseline, pages, repository_policy, ruleset
+from audit_governance import api, audit, canonical_timestamp, capture_baseline, pages, pull_request_context, repository_policy, ruleset
 
 
 class GovernanceTest(unittest.TestCase):
@@ -40,6 +41,69 @@ class GovernanceTest(unittest.TestCase):
 
     def test_live_controls_match_policy(self):
         self.assertEqual(self.run_audit()["status"], "pass")
+
+    def test_pr_owner_migration_uses_exact_head_only_for_its_own_repository(self):
+        self.add_repository()
+        baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        prefix = "repos/example/platform/contents/.github/CODEOWNERS?ref="
+        sha = "a" * 40
+        self.responses[prefix + sha] = self.responses[prefix + "main"]
+        self.responses[prefix + "main"] = {"content": base64.b64encode(b"* @previous-owner\n").decode()}
+        report, table = audit(self.contract, self.responses.__getitem__, baseline, ("example/platform", sha))
+        self.assertEqual(report["status"], "pass")
+        self.assertIn("proposed CODEOWNERS `aaaaaaa`", table)
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "fail")
+        self.responses[prefix.replace("/platform/", "/new-project/") + "main"] = self.responses[prefix + "main"]
+        report, _ = audit(self.contract, self.responses.__getitem__, baseline, ("example/platform", sha))
+        self.assertEqual(len(report["findings"]), 1)
+        self.assertTrue(report["findings"][0].startswith("new-project: CODEOWNERS"))
+
+    def test_pr_context_rejects_stale_foreign_and_malformed_events(self):
+        sha = "a" * 40
+        event = {"number": 6, "pull_request": {
+            "head": {"sha": sha}, "base": {"repo": {"full_name": "example/platform"}},
+        }}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "event.json"
+            env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(path),
+                   "GITHUB_REPOSITORY": "example/platform"}
+            current = {"state": "open", "head": {"sha": sha}}
+            def fetch(endpoint):
+                self.assertEqual(endpoint, "repos/example/platform/pulls/6")
+                return current
+            path.write_text(json.dumps(event))
+            self.assertEqual(pull_request_context(env, fetch), ("example/platform", sha))
+            current["head"]["sha"] = "b" * 40
+            with self.assertRaisesRegex(ValueError, "head changed"):
+                pull_request_context(env, fetch)
+            for field, value in (("sha", "main"), ("repo", "other/platform")):
+                changed = copy.deepcopy(event)
+                if field == "sha":
+                    changed["pull_request"]["head"]["sha"] = value
+                else:
+                    changed["pull_request"]["base"]["repo"]["full_name"] = value
+                path.write_text(json.dumps(changed))
+                with self.assertRaisesRegex(ValueError, "Invalid"):
+                    pull_request_context(env, fetch)
+        self.assertIsNone(pull_request_context({"GITHUB_EVENT_NAME": "push"}))
+
+    def test_only_explicit_app_bypass_is_accepted_and_captured(self):
+        actors = [{"actor_id": 123, "actor_type": "Integration", "bypass_mode": "always"}]
+        self.contract["repositories"]["platform"]["bypass_actors"] = actors
+        self.live["bypass_actors"] = copy.deepcopy(actors)
+        baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        self.assertEqual(baseline["rulesets"]["platform"]["bypass_actors"], actors)
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "pass")
+        del self.live["bypass_actors"]
+        self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "pass")
+        self.assertEqual(self.run_audit()["status"], "fail")
+        for changed in ([*actors, {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+                        [{**actors[0], "actor_type": "Team"}],
+                        [{**actors[0], "bypass_mode": "pull_request"}]):
+            self.live["bypass_actors"] = changed
+            self.assertEqual(audit(self.contract, self.responses.__getitem__, baseline)[0]["status"], "fail")
+            with self.assertRaisesRegex(ValueError, "unverified"):
+                capture_baseline(self.contract, self.responses.__getitem__)
 
     def test_read_only_response_uses_only_the_exact_owner_verified_version(self):
         del self.live["bypass_actors"]
@@ -195,6 +259,10 @@ class GovernanceTest(unittest.TestCase):
         contract = json.loads((root / "governance/repositories.json").read_text())
         self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
         self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertEqual(repository_policy(contract, ".github")["bypass_actors"],
+                         [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}])
+        for name in ("new-project", "terraform-modules", "ops-shared", "engineering-standards", "engineering-acceptance"):
+            self.assertEqual(ruleset(repository_policy(contract, name), 15368)["bypass_actors"], [])
 
 
 if __name__ == "__main__":

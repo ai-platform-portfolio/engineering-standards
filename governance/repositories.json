@@ -4,6 +4,7 @@
   "checks_app_id": 15368,
   "defaults": {"checks": ["quality"]},
   "repositories": {
+    ".github": {"bypass_actors": [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}]},
     "engineering-standards": {"checks": ["quality", "governance"]},
     "engineering-acceptance": {"checks": ["acceptance", "quality"]},
     "terraform-modules": {"checks": ["workflows", "validate", "structure", "infrastructure-plan-required"]}

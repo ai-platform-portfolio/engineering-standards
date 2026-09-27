@@ -84,7 +84,15 @@ must still fail, with findings naming the affected repository and control.
 Publish the discovered catalogue and findings in the audit run summary and report.
 Link to that evidence instead of maintaining a static table claiming compliance.
 Discovery is read-only: provisioning protections and refreshing the owner-verified
-no-bypass baseline remain separate, reviewed operations.
+ruleset baseline remain separate, reviewed operations. The only permitted bypass
+is the `ai-platform-portfolio-ops` GitHub App in `.github` for automated profile
+updates; other repositories and human accounts retain no bypass. This replaces
+the former blanket no-bypass requirement with that explicit repository exception.
+
+For PR audits, validate the calling repository's proposed CODEOWNERS at the exact
+current PR head and label it as proposed in the report. Continue checking other
+repositories and all live protections normally. Main and scheduled audits must
+verify ownership on main everywhere; migrations cannot create audit exemptions.
 
 ## Optional automatic federation onboarding
 

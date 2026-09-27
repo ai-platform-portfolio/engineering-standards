@@ -64,7 +64,10 @@ Installation executes no consumer package scripts and needs no deployment secret
 The portfolio policy requires public repositories and active `main` rulesets requiring
 PRs, one code-owner approval retained after new commits, resolved review
 threads and checks from GitHub Actions. Branches must be up to date before merge.
-Force pushes, deletion and bypass actors are prohibited.
+Force pushes, deletion and human bypass actors are prohibited. The sole app
+exception is `ai-platform-portfolio-ops` (App ID `5094588`) in `.github`, allowing
+automatic profile README commits. GitHub scopes that bypass to the branch, not
+the README path; the app must retain narrowly scoped installation tokens.
 These settings are portfolio-specific, not requirements installed in consumers.
 
 The [Portfolio governance workflow](https://github.com/ai-platform-portfolio/engineering-standards/actions/workflows/governance.yml)
@@ -75,10 +78,14 @@ artifact are the live catalogue and compliance report. A new repository inherits
 overrides, not an inventory. The default required check is `quality`; existing
 repository-specific checks remain required. Discovery does not configure live
 protections or install workflows. It fails on visibility, default-branch,
-CODEOWNERS or ruleset drift, including disabled rules, bypass actors, missing
+CODEOWNERS or ruleset drift, including disabled rules, unapproved bypass actors, missing
 checks and an unexpected check publisher. API failures fail the audit rather
 than reporting compliance. Missing controls fail with repository-specific findings;
 being absent from the overrides does not. The audit never changes repository settings.
+On a PR, only the calling repository's proposed CODEOWNERS is read at its verified
+current head SHA; every other repository is checked on `main`. The report labels
+that proposed ownership explicitly. Main, scheduled and local audits check `main`
+everywhere. This permits an ownership migration without exempting other controls.
 Scheduled execution depends on GitHub Actions being enabled; check the latest
 run's timestamp as well as its result. New private repositories outside the
 token's visibility cannot be discovered; explicitly configured repositories becoming
@@ -91,7 +98,7 @@ Other repositories link here instead of repeating mutable status claims.
 
 GitHub hides bypass actors from read-only tokens. After owner-approved rule
 activation, the owner runs `python3 scripts/audit_governance.py --capture-baseline`
-locally. This discovers repositories, reads the full rulesets, rejects any bypass actor or policy mismatch,
+locally. This discovers repositories, reads the full rulesets, rejects any unapproved bypass actor or policy mismatch,
 and prints the proposed `governance/bypass-baseline.json` for review and commit.
 CI compares the public ruleset ID and `updated_at` timestamp with that verified
 version. Every subsequent ruleset edit invalidates the baseline, even if it only
