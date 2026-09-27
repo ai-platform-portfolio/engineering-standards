@@ -37,3 +37,15 @@ exposing secrets. Until all requested outcomes are evidenced, work is incomplete
 
 This is an org delivery rule, not an automated proof of semantic completeness.
 Acceptance tests enforce the outcomes they cover; the owner reviews coverage.
+
+## Repository governance
+
+Discover organisation repositories from GitHub and audit each against the default
+governance policy plus reviewed repository-specific overrides. Adding a repository
+must not require an inventory edit. Missing protections or unverifiable controls
+must still fail, with findings naming the affected repository and control.
+
+Publish the discovered catalogue and findings in the audit run summary and report.
+Link to that evidence instead of maintaining a static table claiming compliance.
+Discovery is read-only: provisioning protections and refreshing the owner-verified
+no-bypass baseline remain separate, reviewed operations.

@@ -67,7 +67,7 @@ class PolicyAdoption(unittest.TestCase):
         self.git("update-ref", "HEAD", sha)
         return sha
 
-    def run_check(self, reviews, *, author="author", head=None, error=False):
+    def run_check(self, reviews, *, author="author", head=None, error=False, policy_file=None):
         pull = {
             "state": "open",
             "head": {"sha": head or self.head},
@@ -91,6 +91,8 @@ class PolicyAdoption(unittest.TestCase):
             "--report",
             str(self.report),
         ]
+        if policy_file:
+            argv += ["--policy-file=" + policy_file]
         with (
             patch.dict(os.environ, GITHUB_REPOSITORY="example/repo"),
             patch("checks.review.request", side_effect=api),
@@ -141,3 +143,20 @@ class PolicyAdoption(unittest.TestCase):
         self.assertEqual(self.run_check([self.review()], head=self.base)[0], 2)
         self.write("ci/dirty.tf", "")
         self.assertEqual(self.run_check([self.review()])[0], 2)
+
+    def test_nested_policy_requires_current_owner_review(self):
+        self.git("reset", "--hard", self.base)
+        (self.root / "gate-example").mkdir()
+        self.git("mv", "engineering.yaml", "gate-example/engineering.yaml")
+        self.base = self.commit(self.base)
+        self.write(".github/workflow.yml", "name: changed\n")
+        self.head = self.commit(self.base)
+        code, report = self.run_check([], policy_file="gate-example/engineering.yaml")
+        self.assertEqual(code, 1, report)
+        code, report = self.run_check([self.review()], policy_file="gate-example/engineering.yaml")
+        self.assertEqual(code, 0, report)
+        self.assertEqual(self.run_check([self.review(commit=self.base)], policy_file="gate-example/engineering.yaml")[0], 1)
+
+    def test_policy_path_cannot_escape_checkout(self):
+        for path in ("../policy.yml", "/tmp/policy.yml", "-policy.yml"):
+            self.assertEqual(self.run_check([], policy_file=path)[0], 2)

@@ -9,22 +9,13 @@ on:
 permissions:
   contents: read
 jobs:
+  audit:
+    uses: ai-platform-portfolio/ops-shared/.github/workflows/governance.yml@4cdff75db4e0fa6da200e39d370af4f7f825d3b7
   governance:
+    if: always()
+    needs: audit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Test drift detection and API failure handling
-        run: python3 -m unittest discover -s tests -p 'test_governance.py' -v
-      - name: Verify public visibility, merge controls and documentation
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/audit_governance.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: governance-audit
-          path: reports/governance.json
-          if-no-files-found: error
+      - env:
+          RESULT: ${{ needs.audit.result }}
+        run: test "$RESULT" = success

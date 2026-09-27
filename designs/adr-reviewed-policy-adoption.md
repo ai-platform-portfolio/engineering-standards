@@ -46,10 +46,12 @@ actual PR head. Review-triggered checks need `pull-requests: read`. Fork PRs wit
 insufficient token permissions fail closed and need a supported review context.
 
 The review workflow has `actions: write` solely to request a job rerun. It checks
-out only an immutable standards revision and executes `scripts/recheck_review.py`;
+out only an immutable ops-shared revision and executes `scripts/recheck_review.py`;
 it never executes PR code with that token. The helper selects the latest
-`quality.yml` pull-request run matching both PR number and current head, waits
-for an active run to finish, and reruns only `structure`. It also reruns a passing
+configured caller workflow's pull-request run matching both PR number and current head,
+waits for an active run to finish, and reruns the configured policy job (for example,
+`policy / check`). Its dependent caller gate preserves the existing required check
+name. It also reruns a passing
 job after dismissal so withdrawn approval cannot leave that result green.
 API failure, missing or ambiguous jobs, and a five-minute wait timeout fail the
 review job visibly. A superseded or closed PR needs no refresh.
