@@ -65,8 +65,6 @@ The portfolio policy requires public repositories and active `main` rulesets req
 PRs, one code-owner approval, dismissal of stale approvals, resolved review
 threads and checks from GitHub Actions. Branches must be up to date before merge.
 Force pushes, deletion and bypass actors are prohibited.
-The new ops-shared repository is awaiting its bootstrap and protection activation;
-the migration is incomplete until its audit passes with an owner-verified baseline.
 These settings are portfolio-specific, not requirements installed in consumers.
 
 The [Portfolio governance workflow](https://github.com/ai-platform-portfolio/engineering-standards/actions/workflows/governance.yml)
