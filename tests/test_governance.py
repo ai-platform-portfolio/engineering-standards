@@ -258,7 +258,8 @@ class GovernanceTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         contract = json.loads((root / "governance/repositories.json").read_text())
         self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
-        self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertIn("infrastructure-plan-required", repository_policy(contract, "ops-shared")["checks"])
+        self.assertNotIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
         self.assertEqual(repository_policy(contract, ".github")["bypass_actors"],
                          [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}])
         for name in ("new-project", "terraform-modules", "ops-shared", "engineering-standards", "engineering-acceptance"):

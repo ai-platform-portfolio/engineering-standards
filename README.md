@@ -107,13 +107,13 @@ cannot be refreshed with CI's read-only token. No owner credential is stored in
 the workflow. The baseline must cover every repository after rule activation
 before this change can pass its governance check or be merged.
 
-The module repository's `infrastructure-plan-required` check fails if planning
+The ops-shared repository's `infrastructure-plan-required` check fails if planning
 fails, is cancelled or is skipped. Fork PRs cannot satisfy it without a plan in
 a trusted same-repository branch. Deployment approval remains a separate gate.
 
 Agent repair loops and model-based reviews are deferred. Central infrastructure
-deployment is implemented in `terraform-modules`; see its
-[deployment workflow](https://github.com/ai-platform-portfolio/terraform-modules/blob/main/ci/README.md).
+deployment is implemented in `ops-shared`; see its
+[deployment workflow](https://github.com/ai-platform-portfolio/ops-shared/blob/main/ci/README.md).
 
 ## Start here
 

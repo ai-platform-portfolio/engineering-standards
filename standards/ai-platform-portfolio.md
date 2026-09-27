@@ -31,6 +31,19 @@ account. Never relabel historical verification or authorship as another user.
   latest revision. This preference does not change deployment approvals or the
   separate current-commit approval required for protected policy changes.
 
+## Terraform repository boundaries
+
+`terraform-modules` is a library for reusable modules, examples and tests. Do not
+put live deployment roots, environment configuration, state backends or deployment
+pipelines there unless the owner explicitly requests that specific exception.
+The availability of modules is not permission to deploy from their repository.
+
+Implementation repositories call immutable module revisions. Central org
+infrastructure and Function publishing belong in `ops-shared`, with Terraform
+configuration under `ops-shared/ci`. This supersedes the earlier `terraform-modules/ci`
+exception; do not carry that exception forward. Module validation must stay
+backend-free and must not apply live resources. These boundaries are org-specific.
+
 ## Workflow triggers and deployment approval
 
 For this org, do not add `workflow_dispatch` unless the owner explicitly requests
@@ -113,7 +126,7 @@ verify ownership on main everywhere; migrations cannot create audit exemptions.
 
 ## Optional automatic federation onboarding
 
-This org opts in through `terraform-modules/ci/onboarding.json`; absent or disabled
+This org opts in through `ops-shared/ci/onboarding.json`; absent or disabled
 configuration does not enroll repositories. Do not install this preference in
 downstream projects or couple cloud access to local branch-hook installation.
 
