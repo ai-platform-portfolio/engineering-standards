@@ -4,6 +4,19 @@ Scope: repositories owned by `ai-platform-portfolio` only. This document is not
 part of the shared installer, consumer policies, or requirements distributed with
 modules. Downstream repositories do not inherit it.
 
+## Owner identity
+
+Use `michaelalinks` as the owner for this organisation. Never assign
+`michaela-links` as a code owner, required deployment reviewer, policy-exception
+owner, governance-policy owner or default owner in org configuration or tooling.
+The active CLI account does not determine ownership. This rule applies only to
+`ai-platform-portfolio`; do not distribute this account choice downstream.
+
+Use a separate authorised account or app to author PRs that require approval from
+`michaelalinks`; do not weaken review requirements to allow self-approval. Migrate
+existing assignments explicitly and recapture governance evidence as the correct
+account. Never relabel historical verification or authorship as another user.
+
 ## Pull requests
 
 - This is a portfolio organisation with one human owner. Open regular pull
