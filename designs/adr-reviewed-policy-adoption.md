@@ -63,7 +63,9 @@ a distinct job name and serializes events per PR without cancelling active runs.
 
 This checker is not an immutable security boundary: a PR can edit its workflow.
 Repository rules must independently require checks and owner reviews, dismiss
-stale approvals, and restrict bypass. CODEOWNERS alone does not enforce merging.
+stale approvals where required by the adopting repository, and restrict bypass.
+This portfolio opts out of stale-review dismissal; protected-policy adoption
+still requires approval of the current commit. CODEOWNERS alone does not enforce merging.
 Do not describe a repository as protected until its active rules are verified.
 Queued review runs can race; native review requirements remain necessary even
 when the checker re-fetches the PR before accepting approval.

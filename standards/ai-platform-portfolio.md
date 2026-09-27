@@ -26,6 +26,10 @@ account. Never relabel historical verification or authorship as another user.
   PR is not a claim that checks have passed or that it is ready to merge.
 - Existing review requirements and per-command infrastructure approval gates
   still apply. Being the sole owner does not waive them.
+- Keep `dismiss_stale_reviews_on_push` disabled in this org's branch rules.
+  New commits retain existing PR approvals; required checks still validate the
+  latest revision. This preference does not change deployment approvals or the
+  separate current-commit approval required for protected policy changes.
 
 ## Track outcomes through completion
 

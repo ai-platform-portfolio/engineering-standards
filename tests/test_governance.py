@@ -87,7 +87,7 @@ class GovernanceTest(unittest.TestCase):
             lambda r: r.update(bypass_actors=[{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]),
             lambda r: r["rules"].pop(0),
             lambda r: r["rules"][2]["parameters"].update(required_approving_review_count=0),
-            lambda r: r["rules"][2]["parameters"].update(dismiss_stale_reviews_on_push=False),
+            lambda r: r["rules"][2]["parameters"].update(dismiss_stale_reviews_on_push=True),
             lambda r: r["rules"][2]["parameters"].update(require_code_owner_review=False),
             lambda r: r["rules"][3]["parameters"].update(strict_required_status_checks_policy=False),
             lambda r: r["rules"][3]["parameters"]["required_status_checks"].pop(),

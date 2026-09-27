@@ -62,7 +62,7 @@ the JSON report. See the acceptance repository for a working pinned consumer.
 Installation executes no consumer package scripts and needs no deployment secrets.
 
 The portfolio policy requires public repositories and active `main` rulesets requiring
-PRs, one code-owner approval, dismissal of stale approvals, resolved review
+PRs, one code-owner approval retained after new commits, resolved review
 threads and checks from GitHub Actions. Branches must be up to date before merge.
 Force pushes, deletion and bypass actors are prohibited.
 These settings are portfolio-specific, not requirements installed in consumers.
