@@ -13,6 +13,12 @@
 - Before proposing a manual exception, identify why CI cannot execute it, the minimum necessary action, affected resources, rollback and how normal CI deployment will resume. Obtain explicit approval for that exception and the specific command; reconcile the resulting configuration and state with the infrastructure code and record the evidence.
 - Read-only local inspection, validation and planning remain allowed. A local saved plan is review evidence, not authorization or a reason to apply locally. Existing per-command approval requirements also apply to CI triggers that start deployment.
 
+## Application packaging
+
+- Prefer Docker images where the selected hosting service supports them. Use a supported alternative when service constraints justify it, such as ZIP packages for Azure Functions Flex Consumption. Record the constraint and chosen format; do not change hosting or network topology solely to satisfy this preference.
+- Build and test the chosen artifact in CI and publish it through the reviewed deployment workflow. Pin container deployments by digest and package sources by immutable revision with locked dependencies. Verify the running application and its intended outcome after deployment; a successful build or upload is not deployment evidence.
+- Pre-merge checks must reject incompatible hosting/artifact combinations and mutable deployment references. Include deliberately invalid combinations and supported non-container cases in acceptance tests. Identify the consuming workflow and active required check before calling the rule enforced; Docker preference alone must not reject a supported ZIP deployment.
+
 ## Pre-merge deployment validation
 
 - Feature-branch PRs must exercise the real infrastructure plan path before merge: backend initialization, provider authentication, refresh and planning. Static validation alone is insufficient. Main re-plans for drift and gates apply; it must not be the first execution test of the planning path.
