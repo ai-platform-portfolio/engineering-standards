@@ -31,6 +31,23 @@ account. Never relabel historical verification or authorship as another user.
   latest revision. This preference does not change deployment approvals or the
   separate current-commit approval required for protected policy changes.
 
+## Workflow triggers and deployment approval
+
+For this org, do not add `workflow_dispatch` unless the owner explicitly requests
+a manual trigger. Read-only checks, builds and plans run automatically on the
+appropriate PR, push, schedule or authenticated event. Deployment workflows start
+automatically after relevant changes merge to main; resource-changing jobs wait
+for approval in the protected deployment environment.
+
+A manual workflow launch is not the approval gate. Configure and verify the
+environment's required owner, main-only deployment and disabled administrator
+bypass before enabling deployment. Apply infrastructure and federation before
+publishing application code that depends on them. The agent's per-command approval
+requirements still apply when it initiates an apply or deployment.
+
+This replaces the manual-dispatch default used for Function publishing. It is
+org-specific and is not installed in downstream consumers or reusable defaults.
+
 ## Track outcomes through completion
 
 - Keep an acceptance checklist in the PR description that covers each requested
