@@ -1,11 +1,55 @@
 {
   "organization": "ai-platform-portfolio",
-  "code_owner": "michaela-links",
+  "code_owner": "michaelalinks",
   "checks_app_id": 15368,
-  "defaults": {"checks": ["quality"]},
+  "defaults": {
+    "checks": [
+      "quality"
+    ],
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews_on_push": false,
+    "require_code_owner_review": false
+  },
   "repositories": {
-    "engineering-standards": {"checks": ["quality", "governance"]},
-    "engineering-acceptance": {"checks": ["acceptance", "quality"]},
-    "terraform-modules": {"checks": ["workflows", "validate", "structure", "infrastructure-plan-required"]}
+    "engineering-standards": {
+      "checks": [
+        "quality",
+        "governance"
+      ]
+    },
+    "engineering-acceptance": {
+      "checks": [
+        "acceptance",
+        "quality"
+      ]
+    },
+    "platform-iac": {
+      "checks": [
+        "workflows",
+        "validate",
+        "structure",
+        "infrastructure-plan-required"
+      ]
+    },
+    "ops-shared": {
+      "checks": [
+        "quality",
+        "linear-issue-required"
+      ]
+    },
+    "model-gateway": {
+      "checks": [
+        "infrastructure / Plan"
+      ]
+    },
+    ".github": {
+      "bypass_actors": [
+        {
+          "actor_id": 5094588,
+          "actor_type": "Integration",
+          "bypass_mode": "always"
+        }
+      ]
+    }
   }
 }

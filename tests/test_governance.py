@@ -79,6 +79,19 @@ class GovernanceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "configured owner"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
+    def test_only_explicitly_reviewed_app_bypass_can_be_captured_and_audited(self):
+        actors = [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}]
+        self.contract["repositories"]["platform"]["bypass_actors"] = actors
+        self.live["bypass_actors"] = copy.deepcopy(actors)
+        self.baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        del self.live["bypass_actors"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        self.live["bypass_actors"] = actors + [{"actor_id": 1, "actor_type": "Integration",
+                                             "bypass_mode": "always"}]
+        self.assertEqual(self.run_audit()["status"], "fail")
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+
     def test_disabled_untargeted_bypassed_or_weakened_rules_fail(self):
         changes = [
             lambda r: r.update(enforcement="disabled"),
@@ -190,11 +203,23 @@ class GovernanceTest(unittest.TestCase):
         self.assertEqual(len(pages("orgs/example/repos?type=all", fetch)), 101)
         self.assertEqual(len(calls), 2)
 
+    def test_solo_maintainer_policy_preserves_checks_without_requiring_a_second_owner(self):
+        spec = {"checks": ["quality", "plan"], "required_approving_review_count": 0,
+                "dismiss_stale_reviews_on_push": False, "require_code_owner_review": False}
+        self.contract["repositories"]["platform"] = spec
+        live = ruleset(spec, 15368)
+        live.update(id=7, updated_at=self.live["updated_at"])
+        self.responses["repos/example/platform/rulesets/7"] = live
+        del self.responses["repos/example/platform/contents/.github/CODEOWNERS?ref=main"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        live["rules"][3]["parameters"]["required_status_checks"].pop()
+        self.assertEqual(self.run_audit()["status"], "fail")
+
     def test_checked_in_default_and_terraform_override(self):
         root = Path(__file__).resolve().parents[1]
         contract = json.loads((root / "governance/repositories.json").read_text())
-        self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
-        self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertEqual(repository_policy(contract, "new-project")["checks"], ["quality"])
+        self.assertIn("infrastructure-plan-required", repository_policy(contract, "platform-iac")["checks"])
 
 
 if __name__ == "__main__":

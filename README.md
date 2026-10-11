@@ -43,6 +43,12 @@ Policy changes require owner-approved adoption. Consumers may opt in with
 `GITHUB_REPOSITORY`. Approval must come from a base-revision owner for the current
 head. See [the adoption ADR](designs/adr-reviewed-policy-adoption.md) for the
 workflow wiring, trust boundary and acceptance cases.
+Solo-maintainer consumers may opt in to `--policy-mode candidate`. This validates
+the tracked HEAD policy and records protected changes in `protected_changes` for
+native PR review. It does not claim a formal owner approval. Structural findings
+and tool errors still fail; base-policy enforcement remains the default. Candidate
+mode cannot be combined with `--github-pr` or external `--policy` input.
+
 Use `--policy-file PATH` for another tracked policy location. It reads that path
 from the base, protects changes to it, and adopts the approved head only after the
 same owner checks. Absolute paths and parent traversal are rejected.
@@ -61,10 +67,14 @@ the tools; the consumer invokes the emitted checker against the PR base and uplo
 the JSON report. See the acceptance repository for a working pinned consumer.
 Installation executes no consumer package scripts and needs no deployment secrets.
 
-The portfolio policy requires public repositories and active `main` rulesets requiring
-PRs, one code-owner approval, dismissal of stale approvals, resolved review
-threads and checks from GitHub Actions. Branches must be up to date before merge.
-Force pushes, deletion and bypass actors are prohibited.
+The portfolio uses a solo-maintainer workflow: public repositories, active `main`
+rulesets requiring PRs, resolved review threads and GitHub Actions checks. Branches
+must be up to date before merge. Force pushes, deletion and bypass actors are
+prohibited unless an exact repository-specific actor is declared in the reviewed
+contract. The `.github` repository permits only the existing
+`ai-platform-portfolio-ops` integration (app ID 5094588). Reviewer approval counts and code-owner review are configurable in
+`governance/repositories.json`; the portfolio defaults require zero approvals.
+Strict review remains the default for contracts that do not specify those fields.
 These settings are portfolio-specific, not requirements installed in consumers.
 
 The [Portfolio governance workflow](https://github.com/ai-platform-portfolio/engineering-standards/actions/workflows/governance.yml)
@@ -91,10 +101,10 @@ Other repositories link here instead of repeating mutable status claims.
 
 GitHub hides bypass actors from read-only tokens. After owner-approved rule
 activation, the owner runs `python3 scripts/audit_governance.py --capture-baseline`
-locally. This discovers repositories, reads the full rulesets, rejects any bypass actor or policy mismatch,
+locally. This discovers repositories, reads the full rulesets, rejects any unapproved bypass actor or policy mismatch,
 and prints the proposed `governance/bypass-baseline.json` for review and commit.
 CI compares the public ruleset ID and `updated_at` timestamp with that verified
-version. Every subsequent ruleset edit invalidates the baseline, even if it only
+version and its reviewed actor list. Every subsequent ruleset edit invalidates the baseline, even if it only
 changes hidden bypass actors. A missing or stale baseline fails the audit; it
 cannot be refreshed with CI's read-only token. No owner credential is stored in
 the workflow. The baseline must cover every repository after rule activation
