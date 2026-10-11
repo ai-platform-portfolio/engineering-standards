@@ -51,9 +51,9 @@ def ruleset(spec, app_id):
             {"type": "deletion"},
             {"type": "non_fast_forward"},
             {"type": "pull_request", "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": True,
-                "require_code_owner_review": True,
+                "required_approving_review_count": spec.get("required_approving_review_count", 1),
+                "dismiss_stale_reviews_on_push": spec.get("dismiss_stale_reviews_on_push", True),
+                "require_code_owner_review": spec.get("require_code_owner_review", True),
                 "require_last_push_approval": False,
                 "required_review_thread_resolution": True,
                 "allowed_merge_methods": ["merge", "squash", "rebase"],
@@ -176,14 +176,15 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         required_types = {item["type"] for item in ruleset(spec, contract["checks_app_id"])["rules"]}
         if not required_types.issubset(effective_types):
             findings.append("the main ruleset is not effective on main")
-    try:
-        owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
-        owners = base64.b64decode(owners_file["content"]).decode()
-        lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
-        if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
-            findings.append("CODEOWNERS must assign all files to the reviewed portfolio owner")
-    except (RuntimeError, ValueError, KeyError, TypeError) as error:
-        findings.append(f"cannot verify CODEOWNERS: {error}")
+    if spec.get("require_code_owner_review", True):
+        try:
+            owners_file = fetch(f"{prefix}/contents/.github/CODEOWNERS?ref=main")
+            owners = base64.b64decode(owners_file["content"]).decode()
+            lines = [line.split("#", 1)[0].strip() for line in owners.splitlines()]
+            if [line for line in lines if line] != [f"* @{contract['code_owner']}"]:
+                findings.append("CODEOWNERS must assign all files to the reviewed portfolio owner")
+        except (RuntimeError, ValueError, KeyError, TypeError) as error:
+            findings.append(f"cannot verify CODEOWNERS: {error}")
     return {
         "repository": name,
         "visibility": info.get("visibility", "unknown"),

@@ -43,6 +43,12 @@ Policy changes require owner-approved adoption. Consumers may opt in with
 `GITHUB_REPOSITORY`. Approval must come from a base-revision owner for the current
 head. See [the adoption ADR](designs/adr-reviewed-policy-adoption.md) for the
 workflow wiring, trust boundary and acceptance cases.
+Solo-maintainer consumers may opt in to `--policy-mode candidate`. This validates
+the tracked HEAD policy and records protected changes in `protected_changes` for
+native PR review. It does not claim a formal owner approval. Structural findings
+and tool errors still fail; base-policy enforcement remains the default. Candidate
+mode cannot be combined with `--github-pr` or external `--policy` input.
+
 Use `--policy-file PATH` for another tracked policy location. It reads that path
 from the base, protects changes to it, and adopts the approved head only after the
 same owner checks. Absolute paths and parent traversal are rejected.
@@ -61,10 +67,12 @@ the tools; the consumer invokes the emitted checker against the PR base and uplo
 the JSON report. See the acceptance repository for a working pinned consumer.
 Installation executes no consumer package scripts and needs no deployment secrets.
 
-The portfolio policy requires public repositories and active `main` rulesets requiring
-PRs, one code-owner approval, dismissal of stale approvals, resolved review
-threads and checks from GitHub Actions. Branches must be up to date before merge.
-Force pushes, deletion and bypass actors are prohibited.
+The portfolio uses a solo-maintainer workflow: public repositories, active `main`
+rulesets requiring PRs, resolved review threads and GitHub Actions checks. Branches
+must be up to date before merge. Force pushes, deletion and bypass actors are
+prohibited. Reviewer approval counts and code-owner review are configurable in
+`governance/repositories.json`; the portfolio defaults require zero approvals.
+Strict review remains the default for contracts that do not specify those fields.
 These settings are portfolio-specific, not requirements installed in consumers.
 
 The [Portfolio governance workflow](https://github.com/ai-platform-portfolio/engineering-standards/actions/workflows/governance.yml)

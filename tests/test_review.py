@@ -67,7 +67,7 @@ class PolicyAdoption(unittest.TestCase):
         self.git("update-ref", "HEAD", sha)
         return sha
 
-    def run_check(self, reviews, *, author="author", head=None, error=False, policy_file=None):
+    def run_check(self, reviews, *, author="author", head=None, error=False, policy_file=None, candidate=False):
         pull = {
             "state": "open",
             "head": {"sha": head or self.head},
@@ -91,6 +91,9 @@ class PolicyAdoption(unittest.TestCase):
             "--report",
             str(self.report),
         ]
+        if candidate:
+            index = argv.index("--github-pr")
+            argv[index:index + 2] = ["--policy-mode", "candidate"]
         if policy_file:
             argv += ["--policy-file=" + policy_file]
         with (
@@ -110,6 +113,19 @@ class PolicyAdoption(unittest.TestCase):
             "user": {"login": owner, "type": "User"},
             "commit_id": commit or self.head,
         }
+
+    def test_candidate_mode_reports_protected_changes_and_preserves_code_failures(self):
+        code, report = self.run_check([], candidate=True)
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["policy_source"], "candidate")
+        self.assertIsNone(report["policy_adoption"])
+        self.assertEqual({f["file"] for f in report["protected_changes"]},
+                         {"engineering.yaml", ".github/CODEOWNERS", ".github/workflow.yml"})
+        self.write("ci/bad.tf", 'module "bad" { source = "../unapproved" }\n')
+        self.head = self.commit(self.head)
+        code, report = self.run_check([], candidate=True)
+        self.assertEqual(code, 1, report)
+        self.assertEqual({f["rule"] for f in report["findings"]}, {"TF002"})
 
     def test_review_adopts_exact_exception_but_preserves_other_findings(self):
         code, report = self.run_check([self.review()])

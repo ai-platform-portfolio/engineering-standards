@@ -127,6 +127,12 @@ def main() -> int:
     parser.add_argument(
         "--github-pr", type=int, help="Allow policy adoption after exact-head owner review"
     )
+    parser.add_argument(
+        "--policy-mode",
+        choices=("base", "candidate"),
+        default="base",
+        help="Use base policy, or validate candidate policy with protected changes reported for native PR review",
+    )
     args = parser.parse_args()
     try:
         root = args.root.resolve()
@@ -138,10 +144,16 @@ def main() -> int:
         ):
             raise ValueError("--policy-file must be a repository-relative path")
         git(root, "rev-parse", "--verify", args.base + "^{tree}")
+        if args.policy_mode == "candidate" and (args.policy or args.github_pr):
+            raise ValueError("Candidate mode cannot be combined with --policy or --github-pr")
         text = (
             args.policy.read_text()
             if args.policy
-            else git(root, "show", f"{args.base}:{args.policy_file}")
+            else git(
+                root,
+                "show",
+                f"{'HEAD' if args.policy_mode == 'candidate' else args.base}:{args.policy_file}",
+            )
         )
         policy = load_policy(text)
         adoption = None
@@ -167,10 +179,18 @@ def main() -> int:
             )
         if adoption:
             findings = [finding for finding in findings if finding.rule != "POLICY001"]
+        protected_changes = []
+        if args.policy_mode == "candidate":
+            protected_changes = [
+                finding.json() for finding in findings if finding.rule == "POLICY001"
+            ]
+            findings = [finding for finding in findings if finding.rule != "POLICY001"]
         report: dict[str, Any] = {
             "status": "fail" if findings else "pass",
             "findings": [finding.json() for finding in findings],
             "policy_adoption": adoption,
+            "policy_source": args.policy_mode,
+            "protected_changes": protected_changes,
         }
         code = 1 if findings else 0
     except Exception as error:
@@ -180,6 +200,8 @@ def main() -> int:
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     for finding in report["findings"]:
         print(f"{finding['rule']} {finding['file']}:{finding['line']}: {finding['message']}")
+    for finding in report.get("protected_changes", []):
+        print(f"Protected change for PR review: {finding['file']}")
     if report["status"] == "error":
         print(report["error"], file=sys.stderr)
     return code

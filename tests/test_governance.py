@@ -190,11 +190,23 @@ class GovernanceTest(unittest.TestCase):
         self.assertEqual(len(pages("orgs/example/repos?type=all", fetch)), 101)
         self.assertEqual(len(calls), 2)
 
+    def test_solo_maintainer_policy_preserves_checks_without_requiring_a_second_owner(self):
+        spec = {"checks": ["quality", "plan"], "required_approving_review_count": 0,
+                "dismiss_stale_reviews_on_push": False, "require_code_owner_review": False}
+        self.contract["repositories"]["platform"] = spec
+        live = ruleset(spec, 15368)
+        live.update(id=7, updated_at=self.live["updated_at"])
+        self.responses["repos/example/platform/rulesets/7"] = live
+        del self.responses["repos/example/platform/contents/.github/CODEOWNERS?ref=main"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        live["rules"][3]["parameters"]["required_status_checks"].pop()
+        self.assertEqual(self.run_audit()["status"], "fail")
+
     def test_checked_in_default_and_terraform_override(self):
         root = Path(__file__).resolve().parents[1]
         contract = json.loads((root / "governance/repositories.json").read_text())
-        self.assertEqual(repository_policy(contract, "new-project"), {"checks": ["quality"]})
-        self.assertIn("infrastructure-plan-required", repository_policy(contract, "terraform-modules")["checks"])
+        self.assertEqual(repository_policy(contract, "new-project")["checks"], ["quality"])
+        self.assertIn("infrastructure-plan-required", repository_policy(contract, "platform-iac")["checks"])
 
 
 if __name__ == "__main__":
