@@ -34,7 +34,7 @@ class PolicyAdoption(unittest.TestCase):
         self.write("engineering.yaml", yaml.safe_dump(self.policy))
         self.base = self.commit()
         self.write(
-            "ci/main.tf", 'module "deployment_identity" { source = "../modules/identity" }\n'
+            "ci/main.tf", 'module "deployment_identity" { source = "../modules/azure/identity" }\n'
         )
         self.write(".github/workflow.yml", "name: changed\n")
         self.write(".github/CODEOWNERS", "* @candidate\n")
