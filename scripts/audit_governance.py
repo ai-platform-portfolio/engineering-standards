@@ -45,7 +45,7 @@ def ruleset(spec, app_id):
         "name": "main",
         "target": "branch",
         "enforcement": "active",
-        "bypass_actors": [],
+        "bypass_actors": spec.get("bypass_actors", []),
         "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
         "rules": [
             {"type": "deletion"},
@@ -94,7 +94,7 @@ def differences(actual, expected, path="ruleset"):
         if not isinstance(actual, list):
             return [f"{path}: missing list"]
         if expected and isinstance(expected[0], dict):
-            identity = "type" if "type" in expected[0] else "context"
+            identity = next(key for key in ("type", "context", "actor_id") if key in expected[0])
             findings = []
             if len(actual) != len(expected):
                 findings.append(f"{path}: expected {len(expected)} entries, found {len(actual)}")
@@ -138,7 +138,8 @@ def capture_baseline(contract, fetch=api):
         if not live.get("updated_at"):
             raise ValueError(f"{name}: ruleset update timestamp is missing")
         baseline["rulesets"][name] = {
-            "ruleset_id": live["id"], "updated_at": canonical_timestamp(live["updated_at"]), "bypass_actors": [],
+            "ruleset_id": live["id"], "updated_at": canonical_timestamp(live["updated_at"]),
+            "bypass_actors": live["bypass_actors"],
         }
     return baseline
 
@@ -160,7 +161,8 @@ def inspect_repository(org, name, spec, contract, fetch=api, baseline=None):
         baseline = baseline or {}
         captured = baseline.get("rulesets", {}).get(name)
         expected_capture = {
-            "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")), "bypass_actors": [],
+            "ruleset_id": live.get("id"), "updated_at": canonical_timestamp(live.get("updated_at")),
+            "bypass_actors": spec.get("bypass_actors", []),
         }
         if (baseline.get("verified_by") != contract["code_owner"] or not live.get("updated_at")
                 or captured != expected_capture):

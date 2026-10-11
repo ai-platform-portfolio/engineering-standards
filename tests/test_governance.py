@@ -79,6 +79,19 @@ class GovernanceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "configured owner"):
             capture_baseline(self.contract, self.responses.__getitem__)
 
+    def test_only_explicitly_reviewed_app_bypass_can_be_captured_and_audited(self):
+        actors = [{"actor_id": 5094588, "actor_type": "Integration", "bypass_mode": "always"}]
+        self.contract["repositories"]["platform"]["bypass_actors"] = actors
+        self.live["bypass_actors"] = copy.deepcopy(actors)
+        self.baseline = capture_baseline(self.contract, self.responses.__getitem__)
+        del self.live["bypass_actors"]
+        self.assertEqual(self.run_audit()["status"], "pass")
+        self.live["bypass_actors"] = actors + [{"actor_id": 1, "actor_type": "Integration",
+                                             "bypass_mode": "always"}]
+        self.assertEqual(self.run_audit()["status"], "fail")
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            capture_baseline(self.contract, self.responses.__getitem__)
+
     def test_disabled_untargeted_bypassed_or_weakened_rules_fail(self):
         changes = [
             lambda r: r.update(enforcement="disabled"),

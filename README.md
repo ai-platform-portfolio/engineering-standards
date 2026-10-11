@@ -70,7 +70,9 @@ Installation executes no consumer package scripts and needs no deployment secret
 The portfolio uses a solo-maintainer workflow: public repositories, active `main`
 rulesets requiring PRs, resolved review threads and GitHub Actions checks. Branches
 must be up to date before merge. Force pushes, deletion and bypass actors are
-prohibited. Reviewer approval counts and code-owner review are configurable in
+prohibited unless an exact repository-specific actor is declared in the reviewed
+contract. The `.github` repository permits only the existing
+`ai-platform-portfolio-ops` integration (app ID 5094588). Reviewer approval counts and code-owner review are configurable in
 `governance/repositories.json`; the portfolio defaults require zero approvals.
 Strict review remains the default for contracts that do not specify those fields.
 These settings are portfolio-specific, not requirements installed in consumers.
@@ -99,10 +101,10 @@ Other repositories link here instead of repeating mutable status claims.
 
 GitHub hides bypass actors from read-only tokens. After owner-approved rule
 activation, the owner runs `python3 scripts/audit_governance.py --capture-baseline`
-locally. This discovers repositories, reads the full rulesets, rejects any bypass actor or policy mismatch,
+locally. This discovers repositories, reads the full rulesets, rejects any unapproved bypass actor or policy mismatch,
 and prints the proposed `governance/bypass-baseline.json` for review and commit.
 CI compares the public ruleset ID and `updated_at` timestamp with that verified
-version. Every subsequent ruleset edit invalidates the baseline, even if it only
+version and its reviewed actor list. Every subsequent ruleset edit invalidates the baseline, even if it only
 changes hidden bypass actors. A missing or stale baseline fails the audit; it
 cannot be refreshed with CI's read-only token. No owner credential is stored in
 the workflow. The baseline must cover every repository after rule activation
