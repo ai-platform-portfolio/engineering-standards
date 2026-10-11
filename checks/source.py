@@ -49,7 +49,9 @@ def node_text(node: Node) -> str:
 def changed_lines(root: Path, base: str) -> dict[str, set[int]]:
     changes: dict[str, set[int]] = {}
     path = None
-    for line in git(root, "diff", "--no-ext-diff", "--no-renames", "-U0", base, "--").splitlines():
+    for line in git(
+        root, "diff", "--no-ext-diff", "--find-renames", "-U0", base, "--"
+    ).splitlines():
         if line.startswith("+++ b/"):
             path = line[6:]
             changes[path] = set()
