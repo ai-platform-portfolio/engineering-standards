@@ -13,7 +13,9 @@ from datetime import datetime, timezone
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SHARED = (ROOT / "standards" / "shared.md").read_text().strip()
+SHARED_PATH = Path(os.environ.get(
+    "AGENT_STANDARDS_FILE", ROOT.parent / "ops-shared" / "agent_standards" / "shared.md",
+))
 SIGNAL = (ROOT / "profiles" / "signal.md").read_text()
 
 
@@ -65,9 +67,10 @@ def targets(home, profile):
             (home / ".claude" / "CLAUDE.md", "portfolio", content),
         ]
     if profile == "shared":
+        shared = SHARED_PATH.read_text().strip()
         return [
-            (codex, "shared", SHARED),
-            (home / ".claude" / "CLAUDE.md", "shared", SHARED),
+            (codex, "shared", shared),
+            (home / ".claude" / "CLAUDE.md", "shared", shared),
         ]
     return [
         (codex, "signal", signal_body()),
@@ -131,7 +134,13 @@ def main():
     changes = []
     blocked = False
 
-    for path, name, content in targets(args.home, args.profile):
+    try:
+        instructions = targets(args.home, args.profile)
+    except OSError as error:
+        print("Cannot read agent standards:", error)
+        print("Clone ops-shared alongside this repository or set AGENT_STANDARDS_FILE.")
+        return 1
+    for path, name, content in instructions:
         try:
             current, wanted = proposed(path, name, content)
         except (OSError, ValueError) as error:

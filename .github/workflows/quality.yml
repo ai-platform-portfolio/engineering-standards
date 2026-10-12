@@ -19,5 +19,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ai-platform-portfolio/ops-shared
+          ref: bf471eab9645628bf4fd6b61c1e34d5267e01108
+          path: ops-shared
+          sparse-checkout: agent_standards
+          persist-credentials: false
       - uses: ./
       - run: make check
+        env:
+          AGENT_STANDARDS_FILE: ${{ github.workspace }}/ops-shared/agent_standards/shared.md
